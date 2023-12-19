@@ -5,7 +5,7 @@ RUN ["/bin/bash", "-c", "apt update && apt install -y apt-utils && apt install -
 COPY deeptumour_requirements.txt /DeepTumour/requirements.txt
 COPY deeptumour /DeepTumour/
 ## Install python3.8 for DeepTumour
-RUN ["/bin/bash", "-c", "cd /DeepTumour/Python-3.8.2 && ./configure --enable-optimizations && make -j 2 && make altinstall && rm -rf /DeepTumour/Python-3.8.2"]
+RUN ["/bin/bash", "-c", "cd /DeepTumour/ && tar -xf Python-3.8.2.tar.xz && cd Python-3.8.2 && ./configure --enable-optimizations && make -j 2 && make altinstall && rm -rf Python-3.8.2 Python-3.8.2.tar.xz && cd /"]
 ## Install DeepTumour venv
 RUN ["/bin/bash", "-c", "python3.8 -m venv /DeepTumour/venvDeepTumour && source /DeepTumour/venvDeepTumour/bin/activate && pip install --upgrade pip && pip install --no-cache-dir --upgrade setuptools wheel numpy==1.18.1 && pip install --no-cache-dir -r /DeepTumour/requirements.txt && deactivate"]
 ## Copy GAN files
