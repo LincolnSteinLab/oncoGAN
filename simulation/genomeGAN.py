@@ -412,6 +412,7 @@ def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> p
                 sexChr.reset_index(drop=True, inplace=True)
                 difference += tmp_positions.shape[0]
     positions = pd.concat([normChr, sexChr])
+    positions.reset_index(drop=True, inplace=True)
 
     return(positions)
 
