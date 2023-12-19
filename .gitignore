@@ -1,0 +1,4 @@
+.dockerignore
+hpc_requirements.txt
+simulation/trained_models
+deeptumour/references
