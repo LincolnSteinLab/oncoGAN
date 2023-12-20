@@ -1,5 +1,8 @@
 #!/genomeGAN/venvGAN/bin/python
 
+import sys
+sys.path.append('/genomeGAN/training/ctabgan/')
+
 import os
 import re
 import click
