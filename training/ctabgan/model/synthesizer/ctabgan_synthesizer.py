@@ -8,7 +8,6 @@ from torch.nn import functional as F
 from torch.nn import (Dropout, LeakyReLU, Linear, Module, ReLU, Sequential,
 Conv2d, ConvTranspose2d, Sigmoid, init, BCELoss, CrossEntropyLoss,SmoothL1Loss,LayerNorm)
 from model.synthesizer.transformer import ImageTransformer,DataTransformer
-from model.privacy_utils.rdp_accountant import compute_rdp, get_privacy_spent
 from tqdm import tqdm
 
 
@@ -346,7 +345,8 @@ class CTABGANSynthesizer:
                  num_channels=64,
                  l2scale=1e-5,
                  batch_size=500,
-                 epochs=150):
+                 epochs=150,
+                 lr=2e-4):
                  
 
         self.random_dim = random_dim
@@ -357,6 +357,7 @@ class CTABGANSynthesizer:
         self.l2scale = l2scale
         self.batch_size = batch_size
         self.epochs = epochs
+        self.lr = lr
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     def fit(self, train_data=pd.DataFrame, categorical=[], mixed={}, general=[], non_categorical=[], type={}):
@@ -395,7 +396,7 @@ class CTABGANSynthesizer:
         
         self.generator = Generator(self.gside, layers_G).to(self.device)
         discriminator = Discriminator(self.dside, layers_D).to(self.device)
-        optimizer_params = dict(lr=2e-4, betas=(0.5, 0.9), eps=1e-3, weight_decay=self.l2scale)
+        optimizer_params = dict(lr=self.lr, betas=(0.5, 0.9), eps=1e-3, weight_decay=self.l2scale)
         optimizerG = Adam(self.generator.parameters(), **optimizer_params)
         optimizerD = Adam(discriminator.parameters(), **optimizer_params)
 
@@ -411,7 +412,7 @@ class CTABGANSynthesizer:
         self.generator.apply(weights_init)
         discriminator.apply(weights_init)
 
-        self.Gtransformer = ImageTransformer(self.gside)       
+        self.Gtransformer = ImageTransformer(self.gside)
         self.Dtransformer = ImageTransformer(self.dside)
         
         epsilon = 0
@@ -549,7 +550,9 @@ class CTABGANSynthesizer:
             
    
     def sample(self, n):
-        
+
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
         self.generator.eval()
 
         output_info = self.transformer.output_info
@@ -572,7 +575,7 @@ class CTABGANSynthesizer:
 
         data = np.concatenate(data, axis=0)
         result,resample = self.transformer.inverse_transform(data)
-        
+
         while len(result) < n:
             data_resample = []    
             steps_left = resample// self.batch_size + 1
@@ -596,4 +599,3 @@ class CTABGANSynthesizer:
             result  = np.concatenate([result,res],axis=0)
         
         return result[0:n]
-
