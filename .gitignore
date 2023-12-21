@@ -1,4 +1,3 @@
-.gitignore
 .dockerignore
 hpc_requirements.txt
 simulation/model
