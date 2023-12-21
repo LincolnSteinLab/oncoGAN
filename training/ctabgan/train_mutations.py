@@ -1,8 +1,8 @@
-#!/genomeGAN/venvGAN/bin/python
+#!/usr/local/bin/python3
 
 # Import model path
 import sys
-sys.path.append('/genomeGAN/training/ctabgan/')
+sys.path.append('/genomeGAN/ctabgan/')
 
 # Import modules
 import os
