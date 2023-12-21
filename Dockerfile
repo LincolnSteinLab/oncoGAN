@@ -13,7 +13,6 @@ COPY gan_requirements.txt /genomeGAN/requirements.txt
 ## Install GAN venv
 RUN ["/bin/bash", "-c", "python -m venv /genomeGAN/venvGAN && source /genomeGAN/venvGAN/bin/activate && pip install --upgrade pip && pip install --no-cache-dir --upgrade setuptools wheel && pip install --no-cache-dir -r /genomeGAN/requirements.txt && deactivate"]
 ## Copy DeepTumour files
-COPY deeptumour/references /DeepTumour/references
 COPY deeptumour/*.py /DeepTumour/
 ## Copy GAN files
 COPY simulation /genomeGAN/simulation
