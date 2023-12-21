@@ -1,7 +1,7 @@
-#!/genomeGAN/venvGAN/bin/python
+#!/usr/local/bin/python3
 
 import sys
-sys.path.append('/genomeGAN/training/ctabgan/')
+sys.path.append('/genomeGAN/')
 
 import os
 import re
@@ -22,17 +22,17 @@ def tumor_models(tumor, device) -> list:
     Get the specific models for the selected tumor type
     """
 
-    countModel = torch.load(f"/genomeGAN/simulation/model/counts/{tumor}_counts.pkl", map_location=device)
-    mutModel = torch.load(f"/genomeGAN/simulation/model/mutations/{tumor}_mutations.pkl", map_location=device)
+    countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
+    mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
 
     if tumor == "Lymph-CLL":
         posModel:dict = {}
-        with open(f"/genomeGAN/simulation/model/positions/{tumor}_MUT_positions.pkl", 'rb') as f:
+        with open(f"/genomeGAN/trained_models/positions/{tumor}_MUT_positions.pkl", 'rb') as f:
            posModel['MUT'] = pickle.load(f)
-        with open(f"/genomeGAN/simulation/model/positions/{tumor}_UNMUT_positions.pkl", 'rb') as f:
+        with open(f"/genomeGAN/trained_models/positions/{tumor}_UNMUT_positions.pkl", 'rb') as f:
            posModel['UNMUT'] = pickle.load(f)
     else:
-        with open(f"/genomeGAN/simulation/model/positions/{tumor}_positions.pkl", 'rb') as f:
+        with open(f"/genomeGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
            posModel = pickle.load(f)
     
     return(countModel, mutModel, posModel)
@@ -124,7 +124,7 @@ def simulate_vaf_rank(tumor, nCases) -> list:
     Function to simulate the VAF range for each donor
     """
 
-    rank_file:pd.DataFrame = pd.read_csv("/genomeGAN/simulation/model/vaf_rank_list.tsv", sep='\t') 
+    rank_file:pd.DataFrame = pd.read_csv("/genomeGAN/trained_models/vaf_rank_list.tsv", sep='\t') 
     rank_file = rank_file.loc[rank_file["study"]==tumor]
     donor_vafs:list = random.choices(rank_file.columns[1:], weights=rank_file.values[0][1:], k=nCases)
 
@@ -324,7 +324,7 @@ def get_sexual_chrom_usage(tumor, gender) -> dict:
     Function to get the sexual chromosome usage
     """
 
-    sexChrFile:pd.DataFrame = pd.read_csv("/genomeGAN/simulation/model/xy_ranks.txt", sep='\t') 
+    sexChrFile:pd.DataFrame = pd.read_csv("/genomeGAN/trained_models/xy_ranks.txt", sep='\t') 
     sexChrFile = sexChrFile.loc[sexChrFile["label"].isin([f'{tumor}_X{gender}', f'{tumor}_Y{gender}'])]
     sexChrFile['label'] = sexChrFile['label'].apply(lambda x:x[-2])
 
@@ -517,7 +517,7 @@ def simulate_mut_vafs(tumor, rank, n) -> list:
     A function to simulate the VAF of each mutation
     """
     
-    prop_vaf_file:pd.DataFrame = pd.read_csv(f"/genomeGAN/simulation/model/vaf_annotation_by_study.tsv", sep='\t')
+    prop_vaf_file:pd.DataFrame = pd.read_csv(f"/genomeGAN/trained_models/vaf_annotation_by_study.tsv", sep='\t')
     prop_vaf_file = prop_vaf_file.loc[prop_vaf_file["study"]==tumor, ['vaf_range', rank]]
     mut_vafs:list = random.choices(list(prop_vaf_file['vaf_range']), weights=list(prop_vaf_file[rank]), k=n)
     mut_vafs = vaf_rank2float(mut_vafs)
