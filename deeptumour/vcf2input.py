@@ -1,5 +1,3 @@
-#!/DeepTumour/venvDeepTumour/bin/python
-
 # Read fasta File
 import time
 
@@ -24,7 +22,7 @@ def reverse_complement(seq):
 
 
 def readAutoChrFASTA():
-    x = gzip.open(r'/DeepTumour/model/chromosome.txt.gz', 'rt', encoding='utf-8')
+    x = gzip.open(r'/DeepTumour/trained_models/chromosome.txt.gz', 'rt', encoding='utf-8')
     seq_list = {}
     for i in range(23):
         line = x.readline()
@@ -58,7 +56,7 @@ def vcf2df(flnm):
 def vcf2bins(tmp1, sample_name):
     # set up data frame for SNV counts
     # load header
-    filename = '/DeepTumour/model/hg19.1Mb.header.gz'
+    filename = '/DeepTumour/trained_models/hg19.1Mb.header.gz'
     binhd_df = pd.read_csv(filename, compression='gzip', header=None)
 
     # initial dataframe
@@ -81,7 +79,7 @@ def df2mut(tmp1, seq_list, sample_name):
 
     # load header
     mut_df_header = pd.read_csv(
-        '/DeepTumour/model/Mut-Type-Header.csv')
+        '/DeepTumour/trained_models/Mut-Type-Header.csv')
 
     # initial dataframe
     changes = []

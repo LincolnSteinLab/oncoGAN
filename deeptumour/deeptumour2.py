@@ -1,5 +1,3 @@
-#!/DeepTumour/venvDeepTumour/bin/python
-
 import json
 import sys
 
@@ -181,15 +179,15 @@ def create_loader(inputs, targets, batch_size=32):
 
 def loadModel(pwd='.'):
     complete_ensemble = torch.load(
-        pwd + '/DeepTumour/model/complete_ensemble.pt', map_location=torch.device("cpu"))
+        pwd + '/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
     return(complete_ensemble)
 
 
 if __name__ == '__main__':
 
     complete_ensemble = torch.load(
-        '/DeepTumour/model/complete_ensemble.pt', map_location=torch.device("cpu"))
-    cancer_label = pd.read_csv('/DeepTumour/model/rare_cancer_factors.csv')['Cancer']
+        '/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
+    cancer_label = pd.read_csv('/DeepTumour/trained_models/rare_cancer_factors.csv')['Cancer']
 
     df = pd.read_csv(sys.argv[1])
     labels = df[df.columns[0]]
