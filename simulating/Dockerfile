@@ -1,4 +1,4 @@
-FROM python:3.10.12-bullseye
+FROM python:3.10.12-slim-bullseye
 ## Install esential linux packages
 RUN ["/bin/bash", "-c", "apt update && apt install -y apt-utils && apt install -y build-essential curl libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libsqlite3-dev libreadline-dev libffi-dev libbz2-dev nano zlib1g-dev && apt autoremove -y && apt clean && rm -rf /var/lib/apt/lists/*"]
 ## Copy DeepTumour requirements

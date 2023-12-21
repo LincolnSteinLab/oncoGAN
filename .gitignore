@@ -1,4 +1,4 @@
-.dockerignore
+**/.dockerignore
 hpc_requirements.txt
-simulation/model
-deeptumour/model
+simulating/genomegan/model
+simulating/deeptumour/model
