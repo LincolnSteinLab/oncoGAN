@@ -16,6 +16,8 @@ RUN pip install --upgrade pip && \
 COPY launcher.py /genomeGAN/launcher.py
 COPY ctabgan /genomeGAN/ctabgan
 COPY ctgan /genomeGAN/ctgan
+## Give extra permissions to run jupyter notebook
+RUN mkdir -p /.local/share/jupyter && chmod -R 777 /.local/share/jupyter
 ## Update PATH
 ENV PATH=$PATH:/genomeGAN/
 ## Entrypoint
