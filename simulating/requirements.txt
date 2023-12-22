@@ -1,5 +1,5 @@
 click==8.1.7
-dython==0.7.4
+dython==0.6.4.post1
 jupyter==1.0.0
 numpy==1.24.4
 pandas==1.5.3
