@@ -14,7 +14,7 @@ from torch import cuda, save
 cuda.empty_cache()
 
 # CLI options
-@click.command()
+@click.command(name='trainMutations')
 @click.option("--csv",
               type=click.Path(exists=True, file_okay=True),
               required=True,

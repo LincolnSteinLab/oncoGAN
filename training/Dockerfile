@@ -13,10 +13,11 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r /genomeGAN/requirements.txt && \
     rm /genomeGAN/requirements.txt
 ## Copy GAN scripts
+COPY launcher.py /genomeGAN/launcher.py
 COPY ctabgan /genomeGAN/ctabgan
 COPY ctgan /genomeGAN/ctgan
 ## Update PATH
-ENV PATH=$PATH:/genomeGAN/ctabgan
+ENV PATH=$PATH:/genomeGAN/
 ## Entrypoint
 WORKDIR /home
-ENTRYPOINT ["/bin/bash", "-c"]
+ENTRYPOINT ["launcher.py"]
