@@ -20,4 +20,4 @@ COPY *.py /genomeGAN/
 ENV PATH=$PATH:/genomeGAN/
 ## Entrypoint
 WORKDIR /home
-ENTRYPOINT ["/bin/bash", "-c"]
+ENTRYPOINT ["launcher.py"]

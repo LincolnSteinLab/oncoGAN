@@ -4,7 +4,7 @@ import os
 import click
 import pandas as pd
 
-@click.command()
+@click.command(name="mergeVCFs")
 @click.option("--vcfDir", "vcfDir",
               type=click.Path(exists=True, file_okay=False),
               required=True,
