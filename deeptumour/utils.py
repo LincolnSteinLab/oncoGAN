@@ -3,9 +3,29 @@ import re
 import pandas as pd
 import allel
 from Bio.Seq import reverse_complement
+from liftover import get_lifter
 from pyfaidx import Fasta
 
-def vcf2df(vcf:os.path, prefix:bool) -> pd.DataFrame:
+def hg38tohg19(vcf:pd.DataFrame) -> pd.DataFrame:
+
+    """
+    Convert hg38 coordinates to hg19
+    """
+
+    converter = get_lifter('hg38', 'hg19')
+    for i,row in vcf.iterrows():
+        chrom:str = str(row['CHROM'])
+        pos:int = int(row['POS'])
+        try:
+            liftOver_result:tuple = converter[chrom][pos][0]
+            vcf.loc[i, 'CHROM'] = liftOver_result[0]
+            vcf.loc[i, 'POS'] = liftOver_result[1]
+        except IndexError:
+            vcf.loc[i, 'CHROM'] = 'Remove'
+
+    return(vcf)
+
+def vcf2df(vcf:os.path, prefix:bool, liftOver:bool) -> pd.DataFrame:
     
     """
     Filter SNVs in chr1-chr22 from VCF file and return a dataframe
@@ -13,6 +33,10 @@ def vcf2df(vcf:os.path, prefix:bool) -> pd.DataFrame:
 
     # Open VCF
     vcf:pd.DataFrame = allel.vcf_to_dataframe(vcf, fields='*', alt_number=2) #TODO - Implement LiftOver to convert hg19 to hg38
+
+    # LiftOver coordinates if the original VCF is in hg38
+    if liftOver:
+        vcf = hg38tohg19(vcf)
     
     # Select chromosomes
     if prefix:
@@ -111,7 +135,7 @@ def df2mut(df:pd.DataFrame, sample_name:str, fasta:Fasta) -> pd.DataFrame:
 
     return(mutations)
 
-def vcf2input(vcf:os.path, refGenome:os.path) -> pd.DataFrame:
+def vcf2input(vcf:os.path, refGenome:os.path, liftOver:bool) -> pd.DataFrame:
 
     """
     Process the VCF to get the input necessary for DeepTumour
@@ -125,7 +149,7 @@ def vcf2input(vcf:os.path, refGenome:os.path) -> pd.DataFrame:
     prefix:bool = list(fasta.keys())[0].startswith('chr')
 
     # Load the VCF
-    df:pd.DataFrame = vcf2df(vcf, prefix)
+    df:pd.DataFrame = vcf2df(vcf, prefix, liftOver)
 
     # Convert the dataframe to bin counts
     bins:pd.DataFrame = df2bins(df, sample_name, prefix)

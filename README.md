@@ -59,4 +59,11 @@ docker run --rm -u $(id -u):$(id -g) \
            -v /home/adiaz-navarro/steinlab/docker/genomeGAN/deeptumour/trained_models:/DeepTumour/trained_models \
            -v /home/adiaz-navarro/steinlab/databases/hg19/:/reference \
            -it genomegan:deeptumour --vcfDir /home/vcf --hg19 /reference/hs37d5.fa
+
+# hg38 VCF
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /home/adiaz-navarro/steinlab/docker/genomeGAN/deeptumour/trained_models:/DeepTumour/trained_models \
+           -v /home/adiaz-navarro/steinlab/databases/hg19/:/reference \
+           -it genomegan:deeptumour --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa --liftOver
 ```

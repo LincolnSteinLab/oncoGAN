@@ -174,12 +174,16 @@ class MyDataset(Dataset):
               type=click.Path(exists=True, file_okay=True),
               required = True,
               help="hg19 reference genome in fasta format")
+@click.option("--liftOver", "liftOver",
+              is_flag=True,
+              required = False,
+              help="Use this tag if your VCF is in hg38 coordinates")
 @click.option("--outDir", "outDir",
               type=click.Path(exists=True, file_okay=False),
               default=os.getcwd(),
               show_default=False,
               help="Directory where save DeepTumour results. Default is the current directory")
-def DeepTumour(vcfFile, vcfDir, refGenome, outDir):
+def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, outDir):
     
     """
     Predict cancer type from a VCF file using DeepTumour
@@ -187,12 +191,12 @@ def DeepTumour(vcfFile, vcfDir, refGenome, outDir):
 
     # Generate the DeepTumour input file from the VCFs
     if vcfFile and not vcfDir:
-        input:pd.DataFrame = vcf2input(vcfFile, refGenome)
+        input:pd.DataFrame = vcf2input(vcfFile, refGenome, liftOver)
     elif vcfDir and not vcfFile:
         input:pd.DataFrame = pd.DataFrame()
         for file in os.listdir(vcfDir):
             if file.endswith('.vcf'):
-                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome)])
+                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, liftOver)])
     else:
         raise ValueError('Please provide either a VCF file or a directory with VCF files')
     
