@@ -1,17 +1,16 @@
-import json
-import sys
+#!/usr/local/bin/python3
 
+import os
+import sys
+import click
+import json
 import numpy as np
 import pandas as pd
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-
+from utils import vcf2input
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, TensorDataset
-
+from torch.utils.data import Dataset
 
 class MLP(torch.nn.Module):
     def __init__(self, num_fc_layers, num_fc_units, dropout_rate):
@@ -39,6 +38,7 @@ class MLP(torch.nn.Module):
         for i in range(len(self.layers)):
             x = self.layers[i](x)
             out_list.append(x)
+
         return out_list
 
     def intermediate_forward(self, x, layer_index):
@@ -46,7 +46,6 @@ class MLP(torch.nn.Module):
             x = self.layers[i](x)
 
         return x
-
 
 class EnsembleClassifier(nn.Module):
     def __init__(self, model_list):
@@ -59,13 +58,12 @@ class EnsembleClassifier(nn.Module):
             model.eval()
             logits = model(x)
             logit_list.append(logits)
+
         return logit_list
 
-
 class EnsemblePredictor(nn.Module):
-
     # This is the ensemble to construct when making predictions on PCAWG data.
-    # Exanple of how to construct it and use it is available in the main() function
+    # Exmnple of how to construct it and use it is available in the main() function
     def __init__(self, model):
         super(EnsemblePredictor, self).__init__()
         self.model = model
@@ -74,9 +72,9 @@ class EnsemblePredictor(nn.Module):
         logits_list = self.model.forward(x)
         probs_list = [F.softmax(logits, dim=1) for logits in logits_list]
         probs_tensor = torch.stack(probs_list, dim=2)
-        probs = torch.mean(probs_tensor, dim=2)
         probability = probs_tensor.detach().cpu().numpy()
         probability = np.asarray([p.mean(1) for p in probability])
+
         return probability
 
     def predict(self, x):
@@ -99,9 +97,8 @@ class EnsemblePredictor(nn.Module):
 
         return entropy_list
 
-
 class CompleteEnsemble(nn.Module):
-    # models in this case are of EnsemblePredictors
+    # Models in this case are of EnsemblePredictors
     # This is the ensemble to use when testing on non-PCAWG data
     # An example of how to construct it is in the main() function
     def __init__(self, model_list):
@@ -117,8 +114,7 @@ class CompleteEnsemble(nn.Module):
         return list_of_lists
 
     def get_entropy(self, x):
-        entropy = np.mean([model.per_set_entropy(x)
-                           for model in self.model_list], 0)
+        entropy = np.mean([model.per_set_entropy(x) for model in self.model_list], 0)
 
         return entropy
 
@@ -134,7 +130,6 @@ class CompleteEnsemble(nn.Module):
 
         return predictions
 
-
 class EnsembleClassifierAvg(nn.Module):
     def __init__(self, model_list):
         super(EnsembleClassifierAvg, self).__init__()
@@ -147,8 +142,8 @@ class EnsembleClassifierAvg(nn.Module):
             logits = model(x)
             logit_list.append(logits)
         output = torch.mean(torch.stack(logit_list, 0), dim=0)
-        return output
 
+        return output
 
 class MyDataset(Dataset):
     def __init__(self, data, target):
@@ -164,46 +159,62 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+@click.command(name="DeepTumour")
+@click.option("--vcfFile", "vcfFile",
+              type=click.Path(exists=True, file_okay=True),
+              required=False,
+              default=None,
+              help="VCF file to analyze [Use --vcfFile or --vcfDir]")
+@click.option("--vcfDir", "vcfDir",
+              type=click.Path(exists=True, file_okay=False),
+              required=False,
+              default=None,
+              help="Directory with VCF files to analyze [Use --vcfFile or --vcfDir]")
+@click.option("--hg19", "refGenome",
+              type=click.Path(exists=True, file_okay=True),
+              required = True,
+              help="hg19 reference genome in fasta format")
+@click.option("--outDir", "outDir",
+              type=click.Path(exists=True, file_okay=False),
+              default=os.getcwd(),
+              show_default=False,
+              help="Directory where save DeepTumour results. Default is the current directory")
+def DeepTumour(vcfFile, vcfDir, refGenome, outDir):
+    
+    """
+    Predict cancer type from a VCF file using DeepTumour
+    """
 
-def create_loader(inputs, targets, batch_size=32):
-    dataset = MyDataset(inputs, targets)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=2,
-        pin_memory=True
-    )
-    return loader
+    # Generate the DeepTumour input file from the VCFs
+    if vcfFile and not vcfDir:
+        input:pd.DataFrame = vcf2input(vcfFile, refGenome)
+    elif vcfDir and not vcfFile:
+        input:pd.DataFrame = pd.DataFrame()
+        for file in os.listdir(vcfDir):
+            if file.endswith('.vcf'):
+                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome)])
+    else:
+        raise ValueError('Please provide either a VCF file or a directory with VCF files')
+    
+    # Load the models
+    complete_ensemble = torch.load('/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
+    cancer_label:pd.Series = pd.read_csv('/DeepTumour/trained_models/rare_cancer_factors.csv')['Cancer']
 
+    # Separate labels and matrices
+    labels:pd.Series = input['index']
+    input.drop('index', axis=1, inplace=True)
+    matrix:torch.tensor = torch.from_numpy(input.to_numpy()).float()
 
-def loadModel(pwd='.'):
-    complete_ensemble = torch.load(
-        pwd + '/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
-    return(complete_ensemble)
-
-
-if __name__ == '__main__':
-
-    complete_ensemble = torch.load(
-        '/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
-    cancer_label = pd.read_csv('/DeepTumour/trained_models/rare_cancer_factors.csv')['Cancer']
-
-    df = pd.read_csv(sys.argv[1])
-    labels = df[df.columns[0]]
-    df.drop(df.columns[0], axis=1, inplace=True)
-
-    x = torch.from_numpy(df.to_numpy()).float()
-
-    result = {}
-
+    # Make predictions
     with torch.no_grad():
-        probs = complete_ensemble.predict_proba(x)
-        prediction = complete_ensemble.predict(x)
-        entropy = complete_ensemble.get_entropy(x)
-
+        probs = complete_ensemble.predict_proba(matrix)
+        prediction = complete_ensemble.predict(matrix)
+        entropy = complete_ensemble.get_entropy(matrix)
+    
+    # Extract the results
+    result:dict = {}
     for i, label in enumerate(labels):
-        cancer_probs = {}
+        cancer_probs:dict = {}
         for cancer, prob in zip(cancer_label, probs[i]):
             cancer_probs[cancer] = float(prob)
         result[label] = {
@@ -212,6 +223,9 @@ if __name__ == '__main__':
             'entropy': float(entropy[i])
         }
 
-    json.dump(result, sys.stdout, indent=4, sort_keys=True)
-    print()
+    # Save the results
+    with open(os.path.join(outDir, 'predictions_DeepTumour.json'), 'w') as file:
+        json.dump(result, file, indent=4, sort_keys=True)
 
+if __name__ == '__main__':
+    DeepTumour()

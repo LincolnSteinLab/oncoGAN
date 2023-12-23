@@ -1,8 +1,5 @@
-#!/usr/local/bin/python3
-
 import os
 import re
-import click
 import pandas as pd
 import allel
 from Bio.Seq import reverse_complement
@@ -114,29 +111,14 @@ def df2mut(df:pd.DataFrame, sample_name:str, fasta:Fasta) -> pd.DataFrame:
 
     return(mutations)
 
-@click.command(name="vcf2input")
-@click.option("--vcf",
-              type=click.Path(exists=True, file_okay=True),
-              required=True,
-              help="VCF to analyze")
-@click.option("-r", "--refGenome", "refGenome",
-              type=click.Path(exists=True, file_okay=True),
-              required = True,
-              help="Reference genome in fasta format")
-@click.option("--outDir", "outDir",
-              type=click.Path(exists=True, file_okay=False),
-              default=os.getcwd(),
-              show_default=False,
-              help="Directory where save DeepTumour results. Default is the current directory")
-def vcf2input(vcf, refGenome, outDir):
+def vcf2input(vcf:os.path, refGenome:os.path) -> pd.DataFrame:
 
     """
     Process the VCF to get the input necessary for DeepTumour
     """
 
-    # Create output name and path
+    # Create output name
     sample_name:str = os.path.basename(vcf).replace('.vcf', '')
-    output:os.path = os.path.join(outDir, f'{sample_name}.csv')
 
     # Load the reference genome
     fasta:Fasta = Fasta(refGenome)
@@ -154,7 +136,6 @@ def vcf2input(vcf, refGenome, outDir):
     # Merge the dataframes
     input:pd.DataFrame = pd.concat([bins, mutations]).set_index('bins')
     input = input.transpose()
-    input.to_csv(output, header=True)
-
-if __name__ == '__main__':
-    vcf2input()
+    input.reset_index(drop=False, inplace=True)
+    
+    return(input)
