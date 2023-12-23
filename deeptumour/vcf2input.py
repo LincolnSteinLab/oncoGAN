@@ -1,168 +1,160 @@
-# Read fasta File
-import time
+#!/usr/local/bin/python3
 
-from Bio import SeqIO
-import pandas as pd
-
-import numpy as np
-import allel
-import re
-from multiprocessing import Pool
-import concurrent.futures
 import os
-import sys
-import gzip
+import re
+import click
+import pandas as pd
+import allel
+from Bio.Seq import reverse_complement
+from pyfaidx import Fasta
 
+def vcf2df(vcf:os.path, prefix:bool) -> pd.DataFrame:
+    
+    """
+    Filter SNVs in chr1-chr22 from VCF file and return a dataframe
+    """
 
-def reverse_complement(seq):
-    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-    reverse_complement = "".join(complement.get(base, base)
-                                 for base in reversed(seq))
-    return(reverse_complement)
-
-
-def readAutoChrFASTA():
-    x = gzip.open(r'/DeepTumour/trained_models/chromosome.txt.gz', 'rt', encoding='utf-8')
-    seq_list = {}
-    for i in range(23):
-        line = x.readline()
-        if(i < 9):
-            seq_list[line[0:4]] = line[5:]
-        else:
-            seq_list[line[0:5]] = line[6:]
-    x.close
-    return(seq_list)
-
-
-def vcf2df(flnm):
-    # read VCF files
-    # filter variants in chr1-chr22
-    # count only SNVs
-
-    df = allel.vcf_to_dataframe(flnm, fields='*', alt_number=2)
-    print("--- %s Total Variants in the VCF file ---" % len(df))
-
-    if (df['CHROM'][0].startswith('chr')):
-        pass
+    # Open VCF
+    vcf:pd.DataFrame = allel.vcf_to_dataframe(vcf, fields='*', alt_number=2) #TODO - Implement LiftOver to convert hg19 to hg38
+    
+    # Select chromosomes
+    if prefix:
+        chr_list:list = [f"chr{str(chrom)}" for chrom in range(1, 23)]
     else:
-        df['CHROM'] = ["chr" + str(ch) for ch in df['CHROM']]
+        chr_list:list = [str(chrom) for chrom in range(1, 23)]
 
-    chr_list = ["chr" + str(ch) for ch in range(1, 23)]
-    vcf_df = df[(df['is_snp'] == True) & (df['CHROM'].isin(chr_list))]
-    print("--- %s SNVs in the VCF file ---" % len(vcf_df))
-    return(vcf_df)
+    # Update chromosome names
+    if prefix and not (vcf['CHROM'][0].startswith('chr')):
+        vcf['CHROM'] = [f"chr{str(chrom)}" for chrom in vcf['CHROM']]
+    elif not prefix and (vcf['CHROM'][0].startswith('chr')):
+        vcf['CHROM'] = [str(chrom).replace('chr', '') for chrom in vcf['CHROM']]
+    else:
+        pass
 
+    # Filter SNVs in chr1-chr22
+    vcf_filter:pd.DataFrame = vcf[(vcf['is_snp'] == True) & (vcf['CHROM'].isin(chr_list))]
+    print(f"\n--- {len(vcf_filter)} SNVs from a total of {len(vcf)} variants in the VCF file ---\n")
 
-def vcf2bins(tmp1, sample_name):
-    # set up data frame for SNV counts
-    # load header
-    filename = '/DeepTumour/trained_models/hg19.1Mb.header.gz'
-    binhd_df = pd.read_csv(filename, compression='gzip', header=None)
+    return(vcf_filter.reset_index(drop=True))
 
-    # initial dataframe
+def df2bins(df:pd.DataFrame, sample_name:str, prefix:bool) -> pd.DataFrame:
 
-    test = tmp1.CHROM + '.' + \
-        tmp1.POS.apply(lambda x: int(round(float(x) / 1000000))).astype(str)
+    """
+    Convert the dataframe to bin counts
+    """
+    
+    # Load the header of the bins
+    header_bins:pd.DataFrame = pd.read_csv('/DeepTumour/trained_models/hg19.1Mb.header.gz', compression='gzip', header=None)
 
-    bindf_tmp = pd.DataFrame(
-        {"bins": pd.Series(pd.Categorical(test, categories=binhd_df.iloc[:, 0]))})
+    # Update chromosome names
+    if not prefix:
+        header_bins.iloc[:, 0] = header_bins.iloc[:, 0].apply(lambda x: str(x).replace('chr', ''))
 
-    bins_df = bindf_tmp.groupby('bins').size().reset_index(name=sample_name)
+    # Get bins from the df
+    df_bins:pd.Series = df.CHROM + '.' + df.POS.apply(lambda x: int(round(float(x) / 1000000))).astype(str)
+    bins:pd.DataFrame = pd.DataFrame({'bins': pd.Series(pd.Categorical(df_bins, categories=header_bins.iloc[:, 0]))})
+    
+    # Group bins and count
+    bins = bins.groupby('bins').size().reset_index(name=sample_name)
 
-    return bins_df
+    return(bins)
 
+def df2mut(df:pd.DataFrame, sample_name:str, fasta:Fasta) -> pd.DataFrame:
 
-def df2mut(tmp1, seq_list, sample_name):
-    # Mutation types
+    """
+    Convert the dataframe to mutation types
+    """
 
-    # Setup Dataframe
+    # Load the header of the mutation types
+    header_muts:pd.DataFrame = pd.read_csv('/DeepTumour/trained_models/Mut-Type-Header.csv')
 
-    # load header
-    mut_df_header = pd.read_csv(
-        '/DeepTumour/trained_models/Mut-Type-Header.csv')
+    # Extract the mutation types
+    changes:list = []
+    for _,row in df.iterrows():
+        chrom:str = str(row['CHROM'])
+        pos:int = int(row['POS'])
+        ref:str = row['REF']
+        alt:str = row['ALT_1']
+        ref_ctx:str = fasta[chrom][pos-2:pos+1].seq.upper()
 
-    # initial dataframe
-    changes = []
-    ref_vcf = []
-    ref_hg19 = []
-    tmp1 = tmp1.reset_index()
-    tmp1 = tmp1.to_numpy()
-    for i in range(len(tmp1)):
-        ref = tmp1[i, 4]
-        ch = tmp1[i, 1]
-        st = tmp1[i, 2]
-        alt = tmp1[i, 5]
-        ref_vcf.append(ref)
-        ref_base = seq_list[ch][st - 1].upper()
-        ref_hg19.append(ref_base)
-        ref_cont = seq_list[ch][st - 2:st + 1].upper()
+        # Check that we have the same reference bases
+        if (ref != ref_ctx[1]):
+            print('-----------------------------------')
+            print("WARNING: Reference base from VCF file doesn't match with records on the provided reference genome")
+            print(f'{chrom}:{pos} -- VCF: {ref} vs Reference genome: {ref_ctx[1]} -- Reference context: {ref_ctx}')
+            print('-----------------------------------')
+            continue #TODO - Ask Wei why he keeps these mutations
 
-        if(not ref == ref_base):
-            print("Something wrong with the Genome Version, reference bases from VCF file doesn't match with records on hg19 genome\n")
-            print(ch)
-            print(st)
-            print(ref)
-            print(ref_base)
-            print(ref_cont)
-
+        # Get the reverse complement if necessary
         if (re.search('[GT]', ref)):
             ref = reverse_complement(ref)
-            ref_cont = reverse_complement(ref_cont)
             alt = reverse_complement(alt)
+            ref_ctx = reverse_complement(ref_ctx)
 
-        change_sgl = ref + ".." + alt
-        change_di1 = ref_cont[0:2] + ".." + ref_cont[0] + alt
-        change_di2 = ref_cont[1:3] + ".." + alt + ref_cont[2]
-        change_tri = ref_cont + ".." + ref_cont[0] + alt + ref_cont[2]
-        changes.append(change_sgl)
-        changes.append(change_di1)
-        changes.append(change_di2)
-        changes.append(change_tri)
+        # Calculate the mutation types
+        ## Single context
+        changes.append(f'{ref}..{alt}')
+        ## Binucleotide context
+        changes.append(f'{ref_ctx[:-1]}..{ref_ctx[0]}{alt}')
+        changes.append(f'{ref_ctx[1:]}..{alt}{ref_ctx[-1]}')
+        ## Trinucleotide context
+        changes.append(f'{ref_ctx}..{ref_ctx[0]}{alt}{ref_ctx[-1]}')
 
-    mutdf_tmp = pd.DataFrame({"bins": pd.Series(
-        pd.Categorical(changes, categories=mut_df_header.iloc[:, 0]))})
+    # Group mutation types and count
+    mutations:pd.DataFrame = pd.DataFrame({"bins": pd.Series(pd.Categorical(changes, categories=header_muts.iloc[:, 0]))})
+    mutations = mutations.groupby('bins').size().reset_index(name=sample_name)
+    # Calculate proportions for each range
+    if sum(mutations[sample_name]) > 0:
+        sgl_prop = mutations[sample_name].iloc[0:6] / mutations[sample_name].iloc[0:6].sum()
+        di_prop = mutations[sample_name].iloc[6:54] / mutations[sample_name].iloc[6:54].sum()
+        tri_prop = mutations[sample_name].iloc[54:150] / mutations[sample_name].iloc[54:150].sum()
+        mutations.loc[0:5, sample_name] = sgl_prop
+        mutations.loc[6:53, sample_name] = di_prop
+        mutations.loc[54:149, sample_name] = tri_prop
 
-    mut_df = mutdf_tmp.groupby('bins').size().reset_index(name=sample_name)
-    if sum(mut_df[sample_name]) > 0:
-        tmp_sgl = mut_df[sample_name].iloc[0:6] / sum(mut_df[sample_name].iloc[0:6])
-        tmp_di = mut_df[sample_name].iloc[6:54] / sum(mut_df[sample_name].iloc[6:54])
-        tmp_tri = mut_df[sample_name].iloc[54:150] / sum(mut_df[sample_name].iloc[54:150])
-        mut_df[sample_name].iloc[0:6] = tmp_sgl
-        mut_df[sample_name].iloc[6:54] = tmp_di
-        mut_df[sample_name].iloc[54:150] = tmp_tri
-    return(mut_df)
+    return(mutations)
 
+@click.command(name="vcf2input")
+@click.option("--vcf",
+              type=click.Path(exists=True, file_okay=True),
+              required=True,
+              help="VCF to analyze")
+@click.option("-r", "--refGenome", "refGenome",
+              type=click.Path(exists=True, file_okay=True),
+              required = True,
+              help="Reference genome in fasta format")
+@click.option("--outDir", "outDir",
+              type=click.Path(exists=True, file_okay=False),
+              default=os.getcwd(),
+              show_default=False,
+              help="Directory where save DeepTumour results. Default is the current directory")
+def vcf2input(vcf, refGenome, outDir):
+
+    """
+    Process the VCF to get the input necessary for DeepTumour
+    """
+
+    # Create output name and path
+    sample_name:str = os.path.basename(vcf).replace('.vcf', '')
+    output:os.path = os.path.join(outDir, f'{sample_name}.csv')
+
+    # Load the reference genome
+    fasta:Fasta = Fasta(refGenome)
+    prefix:bool = list(fasta.keys())[0].startswith('chr')
+
+    # Load the VCF
+    df:pd.DataFrame = vcf2df(vcf, prefix)
+
+    # Convert the dataframe to bin counts
+    bins:pd.DataFrame = df2bins(df, sample_name, prefix)
+
+    # Convert the dataframe to mutation types
+    mutations:pd.DataFrame = df2mut(df, sample_name, fasta)
+
+    # Merge the dataframes
+    input:pd.DataFrame = pd.concat([bins, mutations]).set_index('bins')
+    input = input.transpose()
+    input.to_csv(output, header=True)
 
 if __name__ == '__main__':
-    # load FASTA Files:
-    start_time1 = time.time()
-    seq_list = readAutoChrFASTA()
-    print("--- %s seconds to load %s FASTA Files---" %
-          ((time.time() - start_time1), len(seq_list)))
-
-    # load VCF file:
-    vcf_df = vcf2df(sys.argv[1])
-    sample_name = sys.argv[2]
-
-    # convert VCF to Bin counts
-    start_time = time.time()
-    bins_df = vcf2bins(vcf_df, sample_name)
-    print(bins_df.shape)
-    print("--- %s seconds to make SNV Counts Data Frame ---" %
-          (time.time() - start_time))
-
-    # convert VCF to Mutation Types
-    start_time = time.time()
-    mut_df = df2mut(vcf_df, seq_list, sample_name)
-
-    print("--- %s seconds to make Mutation Type Data Frame ---" %
-          (time.time() - start_time))
-
-    cb_df = pd.concat([bins_df, mut_df])
-
-    cb_df = cb_df.set_index('bins')
-
-    cb_df = cb_df.transpose()
-    cb_df.to_csv(sys.argv[1] + '.csv', header=True)
-
-    print("total --- %s seconds ---" % (time.time() - start_time1))
+    vcf2input()
