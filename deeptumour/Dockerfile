@@ -20,4 +20,4 @@ COPY *.py /DeepTumour/
 ENV PATH=$PATH:/DeepTumour/
 ## Entrypoint
 WORKDIR /home
-ENTRYPOINT ["/bin/bash", "-c"]
+ENTRYPOINT ["DeepTumour.py"]
