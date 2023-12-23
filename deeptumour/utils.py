@@ -32,7 +32,7 @@ def vcf2df(vcf:os.path, prefix:bool, liftOver:bool) -> pd.DataFrame:
     """
 
     # Open VCF
-    vcf:pd.DataFrame = allel.vcf_to_dataframe(vcf, fields='*', alt_number=2) #TODO - Implement LiftOver to convert hg19 to hg38
+    vcf:pd.DataFrame = allel.vcf_to_dataframe(vcf, fields='*', alt_number=2)
 
     # LiftOver coordinates if the original VCF is in hg38
     if liftOver:
