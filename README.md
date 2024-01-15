@@ -29,7 +29,7 @@ docker run --rm -u $(id -u):$(id -g) \
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -it genomegan:training.v0 \
-           trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
+           trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
 ```
 
 ## How to train positions using CTGAN model
