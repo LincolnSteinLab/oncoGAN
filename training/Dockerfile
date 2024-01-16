@@ -18,8 +18,9 @@ COPY ctabgan /genomeGAN/ctabgan
 COPY ctgan /genomeGAN/ctgan
 ## Give extra permissions to run jupyter notebook
 RUN mkdir -p /.local/share/jupyter && chmod -R 777 /.local/share/jupyter
-## Update PATH
+## Update environment variables
 ENV PATH=$PATH:/genomeGAN/
+ENV MPLCONFIGDIR=/tmp
 ## Entrypoint
 WORKDIR /home
 ENTRYPOINT ["launcher.py"]
