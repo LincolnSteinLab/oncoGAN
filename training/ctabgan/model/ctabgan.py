@@ -30,7 +30,8 @@ class CTABGAN():
                  problem_type= {"Classification": "income"},
                  epochs = 150,
                  batch_size = 500,
-                 lr = 2e-4):
+                 lr = 2e-4,
+                 tqdm_disable = False):
 
         self.__name__ = 'CTABGAN'
               
@@ -46,19 +47,22 @@ class CTABGAN():
         self.non_categorical_columns = non_categorical_columns
         self.integer_columns = integer_columns
         self.problem_type = problem_type
+        self.tqdm_disable = tqdm_disable
 
     def fit(self):
         
-        start_time = time.time()
-        start_time2 = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
-        print(f"Starting training: {start_time2}")
+        if not self.tqdm_disable:
+            start_time = time.time()
+            start_time2 = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+            print(f"Starting training: {start_time2}")
         self.data_prep = DataPrep(self.raw_df,self.categorical_columns,self.log_columns,self.mixed_columns,self.general_columns,self.non_categorical_columns,self.integer_columns,self.problem_type,self.test_ratio)
         self.synthesizer.fit(train_data=self.data_prep.df, categorical = self.data_prep.column_types["categorical"], mixed = self.data_prep.column_types["mixed"],
-        general = self.data_prep.column_types["general"], non_categorical = self.data_prep.column_types["non_categorical"], type=self.problem_type)
-        end_time = time.time()
-        end_time2 = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
-        print(f"Finished training: {end_time2}")
-        print('Finished training in', time.strftime("%H:%M:%S", time.gmtime(end_time-start_time)))
+        general = self.data_prep.column_types["general"], non_categorical = self.data_prep.column_types["non_categorical"], type=self.problem_type, tqdm_disable=self.tqdm_disable)
+        if not self.tqdm_disable:
+            end_time = time.time()
+            end_time2 = time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())
+            print(f"Finished training: {end_time2}")
+            print('Finished training in', time.strftime("%H:%M:%S", time.gmtime(end_time-start_time)))
 
 
     def generate_samples(self, n):

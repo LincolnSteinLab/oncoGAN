@@ -360,7 +360,7 @@ class CTABGANSynthesizer:
         self.lr = lr
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def fit(self, train_data=pd.DataFrame, categorical=[], mixed={}, general=[], non_categorical=[], type={}):
+    def fit(self, train_data=pd.DataFrame, categorical=[], mixed={}, general=[], non_categorical=[], type={}, tqdm_disable=False):
 
         problem_type = None
         target_index=None
@@ -421,7 +421,7 @@ class CTABGANSynthesizer:
         ci = 1
         
         steps_per_epoch = max(1, len(train_data) // self.batch_size)
-        for i in tqdm(range(self.epochs)):
+        for i in tqdm(range(self.epochs), disable=tqdm_disable):
             for id_ in range(steps_per_epoch):
 				
                 

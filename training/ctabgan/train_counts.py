@@ -49,7 +49,12 @@ cuda.empty_cache()
               default=2e-4,
               show_default=True,
               help="Learning rate")
-def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
+@click.option('--no-tqdm', 'tqdm_disable',
+              is_flag=True,
+              flag_value=True,
+              required=False,
+              help="Disable tqdm progress bar")
+def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
 
     # Get training file information
     colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
@@ -67,7 +72,8 @@ def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
                           problem_type= {None: None},
                           epochs = epochs,
                           batch_size = batch_size,
-                          lr = lr)
+                          lr = lr,
+                          tqdm_disable = tqdm_disable)
     
     # Fitting the synthesizer to the training dataset
     synthesizer.fit()
