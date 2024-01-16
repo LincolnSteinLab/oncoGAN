@@ -5,6 +5,8 @@ import os
 import subprocess
 from ctabgan.train_counts import training as trainCounts
 from ctabgan.train_mutations import training as trainMutations
+from ctabgan.train_drivers import training as trainDrivers
+from ctabgan.test_hyperparameters import testHyperparameters
 
 @click.group()
 def cli():
@@ -26,6 +28,8 @@ def jupyter(port):
 
 cli.add_command(trainCounts)
 cli.add_command(trainMutations)
+cli.add_command(trainDrivers)
+cli.add_command(testHyperparameters)
 cli.add_command(jupyter)
 if __name__ == '__main__':
     cli()

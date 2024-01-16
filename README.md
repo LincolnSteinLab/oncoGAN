@@ -16,7 +16,7 @@ docker run --rm -u $(id -u):$(id -g) \
            vcfGANerator -n 1 --tumor CNS-PiloAstro -r /reference/hs37d5.fa
 ```
 
-## How to train counts or mutations using CTAB-GAN-Plus model
+## How to train counts, mutations or drivers using CTAB-GAN-Plus model
 
 ```bash
 # Counts
@@ -30,6 +30,18 @@ docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -it genomegan:training.v0 \
            trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
+
+# Drivers
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -it genomegan:training.v0 \
+           trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+
+# Test hyperparameters
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -it genomegan:training.v0 \
+           testHyperparameters --cpu 2 --function drivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
 ```
 
 ## How to train positions using CTGAN model
