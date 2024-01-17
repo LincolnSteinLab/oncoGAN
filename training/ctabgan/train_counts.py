@@ -14,6 +14,35 @@ from torch import cuda, save
 
 cuda.empty_cache()
 
+def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+
+    # Get training file information
+    colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
+    n:int = pd.read_csv(csv).shape[0]
+
+    # Initializing the synthesizer object and specifying input parameters
+    ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default
+    synthesizer = CTABGAN(raw_csv_path = csv,
+                          test_ratio = test_ratio,
+                          categorical_columns = [],
+                          log_columns = [],
+                          mixed_columns = {},
+                          general_columns= [],
+                          integer_columns = colnames,
+                          problem_type= {None: None},
+                          epochs = epochs,
+                          batch_size = batch_size,
+                          lr = lr,
+                          tqdm_disable = tqdm_disable)
+    
+    # Fitting the synthesizer to the training dataset
+    synthesizer.fit()
+    save(synthesizer, f"{outdir}/{prefix}_counts_epoch{epochs}_batchsize{batch_size}_lr{lr}.pkl")
+
+    # Generating synthetic data as test
+    syn = synthesizer.generate_samples(n)
+    syn.to_csv(f"{outdir}/{prefix}_counts_epoch{epochs}_batchsize{batch_size}_lr{lr}.txt", sep="\t", index=False)
+
 # CLI options
 @click.command(name='trainCounts')
 @click.option("--csv",
@@ -54,34 +83,8 @@ cuda.empty_cache()
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
-
-    # Get training file information
-    colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
-    n:int = pd.read_csv(csv).shape[0]
-
-    # Initializing the synthesizer object and specifying input parameters
-    ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default
-    synthesizer = CTABGAN(raw_csv_path = csv,
-                          test_ratio = test_ratio,
-                          categorical_columns = [],
-                          log_columns = [],
-                          mixed_columns = {},
-                          general_columns= [],
-                          integer_columns = colnames,
-                          problem_type= {None: None},
-                          epochs = epochs,
-                          batch_size = batch_size,
-                          lr = lr,
-                          tqdm_disable = tqdm_disable)
-    
-    # Fitting the synthesizer to the training dataset
-    synthesizer.fit()
-    save(synthesizer, f"{outdir}/{prefix}_counts_epoch{epochs}_batchsize{batch_size}_lr{lr}.pkl")
-
-    # Generating synthetic data as test
-    syn = synthesizer.generate_samples(n)
-    syn.to_csv(f"{outdir}/{prefix}_counts_epoch{epochs}_batchsize{batch_size}_lr{lr}.txt", sep="\t", index=False)
+def trainCountsClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+    trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable)
 
 if __name__ == '__main__':
-    trainCounts()
+    trainCountsClick()

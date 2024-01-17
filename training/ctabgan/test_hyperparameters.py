@@ -3,15 +3,10 @@
 # Import modules
 import os
 import click
-import subprocess
-import multiprocessing
+from multiprocessing.pool import ThreadPool as Pool
 from itertools import product
-
-def runScript(script, csv, prefix, outdir, epochs, batch_size, lr, debug):
-    if debug:
-        subprocess.run(["/bin/bash", "-c", f"{script} --csv {csv} --prefix {prefix} --outdir {outdir} --epochs {epochs} --batch_size {batch_size} --lr {lr}"])
-    else:
-        subprocess.run(["/bin/bash", "-c", f"{script} --csv {csv} --prefix {prefix} --outdir {outdir} --epochs {epochs} --batch_size {batch_size} --lr {lr} --no-tqdm"])
+from ctabgan.train_counts import trainCounts
+from ctabgan.train_drivers import trainDrivers
 
 # CLI options
 @click.command(name='testHyperparameters')
@@ -49,6 +44,7 @@ def runScript(script, csv, prefix, outdir, epochs, batch_size, lr, debug):
               help="A list with a learning rate range: start stop step")
 @click.option("--debug",
               is_flag=True,
+              flag_value=False,
               help="Greater verbosity for debugging purposes")
 def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, debug):
 
@@ -56,22 +52,20 @@ def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, 
     Test hyperparameters for the CTABGAN models
     """
 
-    # This function only works for Counts and Drivers
-    if function == 'counts':
-        script:os.path = '/genomeGAN/ctabgan/train_counts.py'
-    elif function == 'drivers':
-        script:os.path = '/genomeGAN/ctabgan/train_drivers.py'
-
     # Create the list of options
     options:list = []
-    for iproduct in list(product(range(*epochs), range(*batch_size), [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
-        options.append(tuple([script, csv, prefix, outdir]+list(iproduct)+[debug]))
+    for iproduct in list(product(range(*epochs), range(*batch_size), [0.3], [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
+        # options.append(tuple([csv, prefix, outdir]+list(iproduct)+[debug]))
+        options.append((csv, prefix, outdir, *iproduct, debug))
     
     # Iterate hyperparameters
     click.echo(f"\n########## Testing {len(options)} hyperparameters combinations ##########\n")
-    with multiprocessing.Pool(cpu) as pool:
-        pool.starmap(runScript, options)
-    click.echo(f"                 ########## Done ##########                     \n")
+    with Pool(cpu) as pool:
+        if function == 'counts':
+            pool.starmap(trainCounts, options)
+        else:
+            pool.starmap(trainDrivers, options)
+    click.echo(f"\n########################### Done ############################\n")
 
 if __name__ == '__main__':
     testHyperparameters()
