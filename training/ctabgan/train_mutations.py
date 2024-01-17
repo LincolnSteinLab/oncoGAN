@@ -48,7 +48,7 @@ cuda.empty_cache()
               default=2e-4,
               show_default=True,
               help="Learning rate")
-def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
+def trainMutations(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
       
     # Initializing the synthesizer object and specifying input parameters
     ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default
@@ -73,4 +73,4 @@ def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
     syn.to_csv(f"{outdir}/{prefix}_mutations_epoch{epochs}_batchsize{batch_size}_lr{lr}_testratio{test_ratio}.txt", sep="\t", index=False)
 
 if __name__ == '__main__':
-    training()
+    trainMutations()

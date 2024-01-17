@@ -3,9 +3,9 @@
 import click
 import os
 import subprocess
-from ctabgan.train_counts import training as trainCounts
-from ctabgan.train_mutations import training as trainMutations
-from ctabgan.train_drivers import training as trainDrivers
+from ctabgan.train_counts import trainCounts
+from ctabgan.train_mutations import trainMutations
+from ctabgan.train_drivers import trainDrivers
 from ctabgan.test_hyperparameters import testHyperparameters
 
 @click.group()

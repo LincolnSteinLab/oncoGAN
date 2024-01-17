@@ -54,7 +54,7 @@ cuda.empty_cache()
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
 
     # Get training file information
     colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
@@ -84,4 +84,4 @@ def training(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disab
     syn.to_csv(f"{outdir}/{prefix}_counts_epoch{epochs}_batchsize{batch_size}_lr{lr}.txt", sep="\t", index=False)
 
 if __name__ == '__main__':
-    training()
+    trainCounts()
