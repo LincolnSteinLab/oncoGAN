@@ -7,8 +7,11 @@ import subprocess
 import multiprocessing
 from itertools import product
 
-def runScript(script, csv, prefix, outdir, epochs, batch_size, lr):
-    subprocess.run(["/bin/bash", "-c", f"{script} --csv {csv} --prefix {prefix} --outdir {outdir} --epochs {epochs} --batch_size {batch_size} --lr {lr} --no-tqdm"])
+def runScript(script, csv, prefix, outdir, epochs, batch_size, lr, debug):
+    if debug:
+        subprocess.run(["/bin/bash", "-c", f"{script} --csv {csv} --prefix {prefix} --outdir {outdir} --epochs {epochs} --batch_size {batch_size} --lr {lr}"])
+    else:
+        subprocess.run(["/bin/bash", "-c", f"{script} --csv {csv} --prefix {prefix} --outdir {outdir} --epochs {epochs} --batch_size {batch_size} --lr {lr} --no-tqdm"])
 
 # CLI options
 @click.command(name='testHyperparameters')
@@ -44,7 +47,10 @@ def runScript(script, csv, prefix, outdir, epochs, batch_size, lr):
 @click.option("--lr",
               type=click.Tuple([float, float, float]),
               help="A list with a learning rate range: start stop step")
-def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr):
+@click.option("--debug",
+              is_flag=True,
+              help="Greater verbosity for debugging purposes")
+def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, debug):
 
     """
     Test hyperparameters for the CTABGAN models
@@ -59,13 +65,13 @@ def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, 
     # Create the list of options
     options:list = []
     for iproduct in list(product(range(*epochs), range(*batch_size), [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
-        options.append(tuple([script, csv, prefix, outdir]+list(iproduct)))
+        options.append(tuple([script, csv, prefix, outdir]+list(iproduct)+[debug]))
     
     # Iterate hyperparameters
     click.echo(f"\n########## Testing {len(options)} hyperparameters combinations ##########\n")
     with multiprocessing.Pool(cpu) as pool:
         pool.starmap(runScript, options)
-    click.echo(f"                        ########## Done ##########                          \n")
+    click.echo(f"                 ########## Done ##########                     \n")
 
 if __name__ == '__main__':
     testHyperparameters()
