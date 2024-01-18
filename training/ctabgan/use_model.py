@@ -1,5 +1,6 @@
 #!/usr/local/bin/python3
 
+# Import model path
 import sys
 sys.path.append('/genomeGAN/')
 

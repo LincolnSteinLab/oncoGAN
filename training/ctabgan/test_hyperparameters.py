@@ -49,7 +49,7 @@ from ctabgan.train_drivers import trainDrivers
 def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, debug):
 
     """
-    Test hyperparameters for the CTABGAN models
+    Test hyperparameters for counts/drivers CTABGAN models
     """
 
     # Create the list of options

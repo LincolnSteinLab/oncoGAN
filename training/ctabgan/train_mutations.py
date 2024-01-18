@@ -49,6 +49,10 @@ cuda.empty_cache()
               show_default=True,
               help="Learning rate")
 def trainMutations(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
+
+    """
+    Train a mutations CTABGAN model
+    """
       
     # Initializing the synthesizer object and specifying input parameters
     ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default

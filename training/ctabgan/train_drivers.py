@@ -14,7 +14,7 @@ from torch import cuda, save
 
 cuda.empty_cache()
 
-def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable) -> None:
 
     # Get training file information
     colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
@@ -84,6 +84,11 @@ def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_d
               required=False,
               help="Disable tqdm progress bar")
 def trainDriversClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+
+    """
+    Train a drivers CTABGAN model
+    """
+
     trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable)
 
 if __name__ == '__main__':
