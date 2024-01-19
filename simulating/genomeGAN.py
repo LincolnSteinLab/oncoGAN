@@ -50,7 +50,7 @@ def out_path(outDir, prefix, tumor, n) -> click.Path:
     
     return(output)
 
-def remove_low_expressed(row):
+def remove_low_expressed(row) -> list:
     
     """
     Quick function to process the counts and remove the mutations from very low expressed signatures
@@ -419,7 +419,7 @@ def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> p
 
     return(positions)
 
-def generate_positions(posSynthesizer, nMut, fasta, cpus, sexChrDict): 
+def generate_positions(posSynthesizer, nMut, fasta, cpus, sexChrDict) -> pd.DataFrame: 
 
     """
     Function to generate the positions of the mutations
@@ -619,12 +619,7 @@ def availTumors():
     List of available tumors to simulate
     """
 
-    tumors:list = [["Biliary-AdenoCA", "Bone-Osteosarc", "Breast-AdenoCa"],
-                    ["CNS-Medullo", "CNS-PiloAstro", "Eso-AdenoCa"],
-                    ["Kidney-RCC", "Liver-HCC", "Lymph-BNHL"],
-                    ["Lymph-CLL", "Myeloid-MPN", "Ovary-AdenoCA"],
-                    ["Panc-AdenoCA", "Panc-Endocrine", "Prost-AdenoCA"],
-                    ["Skin-Melanoma", "Stomach-AdenoCA"]]
+    tumors:list = [["CNS-PiloAstro", "Liver-HCC", "Lymph-CLL"]]
     tumors:str = '\n'.join(['\t\t'.join(x) for x in tumors])
     click.echo(f"\nThis is the list of available tumor types that can be simulated using genomeGAN:\n\n{tumors}\n")
 
@@ -635,7 +630,7 @@ def availTumors():
               show_default=True,
               help="Number of CPUs to use")
 @click.option("--tumor",
-              type=click.Choice(["Biliary-AdenoCA","Bone-Osteosarc","Breast-AdenoCa","CNS-Medullo","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-BNHL","Lymph-CLL","Myeloid-MPN","Ovary-AdenoCA","Panc-AdenoCA","Panc-Endocrine","Prost-AdenoCA","Skin-Melanoma","Stomach-AdenoCA"]),
+              type=click.Choice(["CNS-PiloAstro","Liver-HCC","Lymph-CLL"]),
               metavar="TEXT",
               show_choices=False,
               required = True,
