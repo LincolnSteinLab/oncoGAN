@@ -14,6 +14,12 @@ docker run --rm -u $(id -u):$(id -g) \
            -v /home/adiaz-navarro/steinlab/docker/genomeGAN/simulating/trained_models/:/genomeGAN/trained_models \
            -it genomegan:simulating.v0 \
            vcfGANerator -n 1 --tumor CNS-PiloAstro -r /reference/hs37d5.fa
+
+singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/databases/hg19/:/reference \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/genomeGAN_simulations/trained_models/:/genomeGAN/trained_models \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_simulating.sif launcher.py \
+            vcfGANerator -n 1 --tumor CNS-PiloAstro -r /reference/hs37d5.fa
 ```
 
 ## How to train counts, mutations or drivers using CTAB-GAN-Plus model
@@ -25,11 +31,19 @@ docker run --rm -u $(id -u):$(id -g) \
            -it genomegan:training.v0 \
            trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
+singularity exec -H ${pwd}:/home \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
+            trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+
 # Mutations
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -it genomegan:training.v0 \
            trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
+
+singularity exec -H ${pwd}:/home \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
+            trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
 
 # Drivers
 docker run --rm -u $(id -u):$(id -g) \
@@ -37,11 +51,19 @@ docker run --rm -u $(id -u):$(id -g) \
            -it genomegan:training.v0 \
            trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
+singularity exec -H ${pwd}:/home \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
+            trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+
 # Test hyperparameters
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -it genomegan:training.v0 \
            testHyperparameters --cpu 2 --function drivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
+
+singularity exec -H ${pwd}:/home \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
+            testHyperparameters --cpu 2 --function drivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
 ```
 
 ## How to train positions using CTGAN model
@@ -78,4 +100,12 @@ docker run --rm -u $(id -u):$(id -g) \
            -v /home/adiaz-navarro/steinlab/docker/genomeGAN/deeptumour/trained_models:/DeepTumour/trained_models \
            -v /home/adiaz-navarro/steinlab/databases/hg19/:/reference \
            -it genomegan:deeptumour --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa --liftOver
+
+# Singularity
+singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/scripts/deeptumour/trained_models:/DeepTumour/trained_models
+            -B /u/adiaz-navarro/adiaz/databases/hg19/:/reference \
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_deeptumour.sif DeepTumour.py \
+            --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa
+
 ```
