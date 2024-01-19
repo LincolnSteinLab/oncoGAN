@@ -22,9 +22,18 @@ def tumor_models(tumor, device) -> list:
     Get the specific models for the selected tumor type
     """
 
+    # Counts model
     countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
-    mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
 
+    # Mutations model
+    mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
+    
+    # Drivers model and files
+    driversModel:dict = {}
+    driversModel['model'] = torch.load(f"/genomeGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
+    driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+
+    # Positions model
     if tumor == "Lymph-CLL":
         posModel:dict = {}
         with open(f"/genomeGAN/trained_models/positions/{tumor}_MUT_positions.pkl", 'rb') as f:
@@ -35,7 +44,7 @@ def tumor_models(tumor, device) -> list:
         with open(f"/genomeGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
            posModel = pickle.load(f)
     
-    return(countModel, mutModel, posModel)
+    return(countModel, mutModel, posModel, driversModel)
 
 def out_path(outDir, prefix, tumor, n) -> click.Path:
 
@@ -129,6 +138,17 @@ def simulate_vaf_rank(tumor, nCases) -> list:
     donor_vafs:list = random.choices(rank_file.columns[1:], weights=rank_file.values[0][1:], k=nCases)
 
     return(donor_vafs)
+
+def simulate_drivers(driversSynthesizer, nCases) -> pd.DataFrame:
+
+    """
+    Function to simulate the driver mutations for each donor
+    """
+
+    drivers:pd.DataFrame = driversSynthesizer.generate_samples(nCases)
+    drivers = drivers.round(0).astype(int)
+
+    return(drivers)
 
 def vaf_rank2float(vafs_rank_list) -> list:
 
@@ -552,7 +572,49 @@ def chrom2str(chrom) -> str:
     else:
         return str(chrom)
 
-def pd2vcf(muts, fasta, donorID) -> pd.DataFrame:
+def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID) -> pd.DataFrame:
+
+    """
+    Include driver mutations in the vcf with passenger mutations
+    """
+
+    # Select drivers from PCAWG donors
+    drivers_counts = drivers_counts[drivers_counts != 0]
+    selected_drivers:pd.DataFrame = pd.DataFrame()
+    for driver, n in drivers_counts.items():
+        driver_rows:pd.DataFrame = drivers_mutations[drivers_mutations['driver'] == driver]
+        selected_drivers = pd.concat([selected_drivers, driver_rows.sample(n=n, replace=False)], ignore_index=True)
+
+    # Set chrom column to str
+    selected_drivers['chrom'] = selected_drivers['chrom'].astype(str)
+
+    # Fix indels ref and alt
+    for _,mut in selected_drivers.iterrows():
+        if mut['mut'] == 'DEL':
+            mut['start'] = mut['start'] - 1
+            prev_base:str = fasta[str(mut['chrom'])][mut['start']-1:mut['start']].seq
+            mut['ref'] = f"{prev_base}{mut['ref']}"
+            mut['alt'] = prev_base
+        elif mut['mut'] == 'INS':
+            base:str = fasta[mut['chrom']][mut['start']-1:mut['start']].seq
+            mut['ref'] = base
+            mut['alt'] = f"{base}{mut['alt']}"
+        else:
+            pass
+
+    # Reorganize columns
+    selected_drivers['VAF'] = drivers_vaf
+    selected_drivers['ID'] = [f"sim{donorID+1}"] * drivers_counts.sum()
+    selected_drivers['driver'] = selected_drivers['driver'].apply(lambda x: f'driver_{x}')
+    selected_drivers.rename(columns={'chrom':'#CHROM', 'start':'POS', 'ref':'REF', 'alt':'ALT', 'driver':'MUT'}, inplace=True)
+    selected_drivers = selected_drivers[['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'VAF', 'MUT']]
+
+    # Concatenate
+    vcf = pd.concat([vcf, selected_drivers], ignore_index=True)
+
+    return(vcf)
+
+def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID) -> pd.DataFrame:
 
     """
     Convert the pandas DataFrame into a VCF
@@ -600,6 +662,10 @@ def pd2vcf(muts, fasta, donorID) -> pd.DataFrame:
     vcf = pd.DataFrame(vcf)
     vcf["MUT"][vcf["MUT"] == "SNP"] = vcf["SIGNATURE"][vcf["MUT"] == "SNP"]
     vcf.drop('SIGNATURE', axis=1, inplace=True)
+
+    # Assign driver mutations to the VCF
+    if drivers_counts.sum() > 0:
+        vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID)
 
     # Sort the VCF
     vcf['#CHROM'] = vcf['#CHROM'].apply(chrom2int)
@@ -666,7 +732,7 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
     device:str = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # Get models
-    countModel, mutModel, posModel = tumor_models(tumor, device)
+    countModel, mutModel, posModel, driversModel = tumor_models(tumor, device)
 
     # Load reference genome
     fasta = Fasta(refGenome)
@@ -677,6 +743,9 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
     # Annotate VAF rank to each donor
     donors_vafRank:list = simulate_vaf_rank(tumor, nCases)
 
+    # Simulate driver mutations to each donor
+    donors_drivers: pd.DataFrame = simulate_drivers(driversModel['model'], nCases)
+
     # Simulate one donor at a time
     muts:pd.DataFrame = pd.DataFrame()
     for idx in tqdm(range(nCases), desc = "Donors"):
@@ -684,6 +753,7 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         case_counts:pd.Series = counts.iloc[idx]
         nMut:int = int(case_counts.sum())
         case_rank:str = donors_vafRank[idx]
+        case_drivers:pd.Series = donors_drivers.iloc[idx]
 
         # Gender selection
         gender:str = gender_selection(tumor)
@@ -700,9 +770,10 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         # Generate and assign the VAF to the mutations
         mut_vafs:list = simulate_mut_vafs(tumor, case_rank, nMut) #TODO - Adjust VAF for sexual mutations
         case_muts['vaf'] = mut_vafs
+        drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
 
         # Create the VCF output
-        vcf = pd2vcf(case_muts, fasta, idx)
+        vcf = pd2vcf(case_muts, case_drivers, driversModel['mutations'], drivers_vafs, fasta, idx)
 
         # Write the VCF
         output:str = out_path(outDir, prefix, tumor, idx+1)
