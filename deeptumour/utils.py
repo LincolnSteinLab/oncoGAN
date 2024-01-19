@@ -104,7 +104,7 @@ def df2mut(df:pd.DataFrame, sample_name:str, fasta:Fasta) -> pd.DataFrame:
             print("WARNING: Reference base from VCF file doesn't match with records on the provided reference genome")
             print(f'{chrom}:{pos} -- VCF: {ref} vs Reference genome: {ref_ctx[1]} -- Reference context: {ref_ctx}')
             print('-----------------------------------')
-            continue #TODO - Ask Wei why he keeps these mutations
+            continue
 
         # Get the reverse complement if necessary
         if (re.search('[GT]', ref)):
