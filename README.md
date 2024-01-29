@@ -75,6 +75,10 @@ docker run --rm -u $(id -u):$(id -g) \
            -p 8890:8890 \
            -v $(pwd):/home \
            -it genomegan:training.v0 jupyter
+
+singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/positions/:/mnt/
+            /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif jupyter-lab --no-browser --port 8890 --ip=`hostname` 
 ```
 
 ## How to run DeepTumour on the simulated VCFs
