@@ -19,6 +19,7 @@ COPY ctgan /genomeGAN/ctgan
 ## Give extra permissions to run jupyter notebook
 RUN mkdir -p /.local/share/jupyter && chmod -R 777 /.local/share/jupyter
 ## Update environment variables
+ENV JUPYTER_ALLOW_INSECURE_WRITES=1
 ENV PATH=$PATH:/genomeGAN/
 ENV MPLCONFIGDIR=/tmp
 ## Entrypoint
