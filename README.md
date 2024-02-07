@@ -35,6 +35,12 @@ singularity exec -H ${pwd}:/home \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
             trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
+## Simulate trained counts
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -it genomegan:training.v0 \
+           simulateTrainedCounts --pkl /home/CNS-PiloAstro_counts_epoch220_batchsize10_lr0.007.pkl --nFiles 7 --nSamples 89
+
 # Mutations
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \

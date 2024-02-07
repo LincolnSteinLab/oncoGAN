@@ -1,12 +1,13 @@
 #!/usr/local/bin/python3
 
-import click
 import os
+import click
 import subprocess
 from ctabgan.train_counts import trainCountsClick
 from ctabgan.train_mutations import trainMutations
 from ctabgan.train_drivers import trainDriversClick
 from ctabgan.test_hyperparameters import testHyperparameters
+from ctabgan.simulate_trained_counts import simulateTrainedCounts
 from ctabgan.use_model import useModel
 
 @click.group()
@@ -31,6 +32,7 @@ cli.add_command(trainCountsClick)
 cli.add_command(trainMutations)
 cli.add_command(trainDriversClick)
 cli.add_command(testHyperparameters)
+cli.add_command(simulateTrainedCounts)
 cli.add_command(useModel)
 cli.add_command(jupyter)
 if __name__ == '__main__':
