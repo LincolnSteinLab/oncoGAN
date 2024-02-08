@@ -15,7 +15,7 @@ import pandas as pd
 @click.option("--model",
               type=click.Path(exists=True, file_okay=True),
               required=True,
-              help="Model to use for the simulations")
+              help="Model to use for the simulations (counts/drivers)")
 @click.option('--outdir',
               type=click.Path(exists=True, file_okay=False),
               default=os.getcwd(),
@@ -26,7 +26,7 @@ import pandas as pd
               default=1,
               show_default=True,
               help="Number of donors to simulate for each simulation")
-@click.option('-n', '--nSimulations', 'nSimulations',
+@click.option('--nFiles', 'nFiles',
               type=click.INT,
               default=1,
               show_default=True,

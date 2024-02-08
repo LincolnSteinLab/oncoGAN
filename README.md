@@ -35,11 +35,11 @@ singularity exec -H ${pwd}:/home \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
             trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
-## Simulate trained counts
+## Test trained counts
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -it genomegan:training.v0 \
-           simulateTrainedCounts --pkl /home/CNS-PiloAstro_counts_epoch220_batchsize10_lr0.007.pkl --nFiles 7 --nSamples 89
+           useModel --model /home/CNS-PiloAstro_counts_epoch220_batchsize10_lr0.007.pkl --nFiles 7 --nDonors 89
 
 # Mutations
 docker run --rm -u $(id -u):$(id -g) \
@@ -60,6 +60,12 @@ docker run --rm -u $(id -u):$(id -g) \
 singularity exec -H ${pwd}:/home \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
             trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+
+## Test trained drivers
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -it genomegan:training.v0 \
+           useModel --model /home/CNS-PiloAstro_drivers_epoch100_batchsize15_lr0.005.pkl --nFiles 7 --nDonors 89
 
 # Test hyperparameters
 docker run --rm -u $(id -u):$(id -g) \
