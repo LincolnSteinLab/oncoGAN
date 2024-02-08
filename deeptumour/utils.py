@@ -33,6 +33,7 @@ def vcf2df(vcf:os.path, prefix:bool, liftOver:bool) -> pd.DataFrame:
 
     # Open VCF
     vcf:pd.DataFrame = allel.vcf_to_dataframe(vcf, fields='*', alt_number=2)
+    vcf.reset_index(drop=True, inplace=True)
 
     # LiftOver coordinates if the original VCF is in hg38
     if liftOver:
