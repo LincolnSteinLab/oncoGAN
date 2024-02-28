@@ -559,7 +559,6 @@ class CTABGANSynthesizer:
         steps = n // self.batch_size + 1
         
         data = []
-        
         for i in range(steps):
             noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
             condvec = self.cond_generator.sample(self.batch_size)
@@ -576,7 +575,8 @@ class CTABGANSynthesizer:
         data = np.concatenate(data, axis=0)
         result,resample = self.transformer.inverse_transform(data)
 
-        while len(result) < n:
+        tries = 0
+        while (len(result) < n and tries < 150):
             data_resample = []    
             steps_left = resample// self.batch_size + 1
             
@@ -597,5 +597,6 @@ class CTABGANSynthesizer:
 
             res,resample = self.transformer.inverse_transform(data_resample)
             result  = np.concatenate([result,res],axis=0)
+            tries+=1
         
         return result[0:n]

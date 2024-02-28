@@ -70,11 +70,14 @@ def trainMutations(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
     
     # Fitting the synthesizer to the training dataset
     synthesizer.fit()
-    save(synthesizer, f"{outdir}/{prefix}_mutations_epoch{epochs}_batchsize{batch_size}_lr{lr}_testratio{test_ratio}.pkl")
 
     # Generating synthetic data as test
     syn = synthesizer.generate_samples(100)
-    syn.to_csv(f"{outdir}/{prefix}_mutations_epoch{epochs}_batchsize{batch_size}_lr{lr}_testratio{test_ratio}.txt", sep="\t", index=False)
+    if len(syn) < 100:
+        print(f'Error during sample generation for {prefix}: epoch={epochs} batchsize={batch_size} lr={lr}')
+    else:
+        save(synthesizer, f"{outdir}/{prefix}_mutations_epoch{epochs}_batchsize{batch_size}_lr{lr}_testratio{test_ratio}.pkl")
+        syn.to_csv(f"{outdir}/{prefix}_mutations_epoch{epochs}_batchsize{batch_size}_lr{lr}_testratio{test_ratio}.txt", sep="\t", index=False)
 
 if __name__ == '__main__':
     trainMutations()

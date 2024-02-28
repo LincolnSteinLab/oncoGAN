@@ -68,6 +68,8 @@ class CTABGAN():
     def generate_samples(self, n):
 
         sample = self.synthesizer.sample(n) 
-        sample_df = self.data_prep.inverse_prep(sample)
-        
-        return sample_df
+        if len(sample) < n:
+            return(sample)
+        else:
+            sample_df = self.data_prep.inverse_prep(sample)
+            return sample_df

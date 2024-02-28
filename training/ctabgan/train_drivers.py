@@ -36,12 +36,23 @@ def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_d
                           tqdm_disable = tqdm_disable)
     
     # Fitting the synthesizer to the training dataset
-    synthesizer.fit()
-    save(synthesizer, f"{outdir}/{prefix}_drivers_epoch{epochs}_batchsize{batch_size}_lr{lr}.pkl")
-
-    # Generating synthetic data as test
-    syn = synthesizer.generate_samples(n)
-    syn.round(0).astype(int).to_csv(f"{outdir}/{prefix}_drivers_epoch{epochs}_batchsize{batch_size}_lr{lr}.txt", sep="\t", index=False)
+    tries:int = 0
+    max_tries:int = 7
+    while tries <= max_tries:
+        synthesizer.fit()
+        
+        # Generating synthetic data as test
+        syn:pd.DataFrame = synthesizer.generate_samples(n)
+        if len(syn) < n:
+            if tries == max_tries:
+                print(f'Error during sample generation for {prefix}: epoch={epochs} batchsize={batch_size} lr={lr} in {max_tries} tries')
+                break
+            else:
+                tries += 1
+        else:
+            save(synthesizer, f"{outdir}/{prefix}_drivers_epoch{epochs}_batchsize{batch_size}_lr{lr}.pkl")
+            syn.round(0).astype(int).to_csv(f"{outdir}/{prefix}_drivers_epoch{epochs}_batchsize{batch_size}_lr{lr}.txt", sep="\t", index=False)
+            break
 
 # CLI options
 @click.command(name='trainDrivers')
