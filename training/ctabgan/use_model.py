@@ -31,7 +31,7 @@ import pandas as pd
               default=1,
               show_default=True,
               help="Number of files to simulate")
-def useModel(model, outdir, nDonors, nSimulations):
+def useModel(model, outdir, nDonors, nFiles):
 
     """
     Use a driver/count CTABGAN model to generate synthetic data
@@ -41,7 +41,7 @@ def useModel(model, outdir, nDonors, nSimulations):
     synthesizer = load(model, map_location="cpu")
 
     # Simulate the desire number of files
-    for i in range(nSimulations):
+    for i in range(nFiles):
         syn:pd.DataFrame = synthesizer.generate_samples(nDonors)
         modelName:str = os.path.basename(model).strip('.pkl')
         syn.round(0).astype(int).to_csv(f"{outdir}/sim{i}_{modelName}.txt", sep="\t", index=False)
