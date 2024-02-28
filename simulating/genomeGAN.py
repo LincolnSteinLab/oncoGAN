@@ -22,25 +22,45 @@ def tumor_models(tumor, device) -> list:
     Get the specific models for the selected tumor type
     """
 
-    # Counts model
-    countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
-
-    # Mutations model
-    mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
-    
-    # Drivers model and files
-    driversModel:dict = {}
-    driversModel['model'] = torch.load(f"/genomeGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
-    driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
-
-    # Positions model
     if tumor == "Lymph-CLL":
+        # Counts model
+        countModel:dict = {}
+        countModel['MUT'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-MCLL_counts.pkl", map_location=device)
+        countModel['UNMUT'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-UCLL_counts.pkl", map_location=device)
+
+        # Mutations model
+        mutModel:dict = {}
+        mutModel['MUT'] = torch.load(f"/genomeGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
+        mutModel['UNMUT'] = torch.load(f"/genomeGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
+        
+        # Drivers model and files
+        driversModel:dict = {}
+        driversModel['MUT']:dict = {}
+        driversModel['MUT']['model'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-MCLL_drivers.pkl", map_location=device)
+        driversModel['MUT']['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/Lymph-MCLL_driver_mutations.csv")
+        driversModel['UNMUT']:dict = {}
+        driversModel['UNMUT']['model'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
+
+        # Positions model
         posModel:dict = {}
-        with open(f"/genomeGAN/trained_models/positions/{tumor}_MUT_positions.pkl", 'rb') as f:
+        with open(f"/genomeGAN/trained_models/positions/Lymph-MCLL_positions.pkl", 'rb') as f:
            posModel['MUT'] = pickle.load(f)
-        with open(f"/genomeGAN/trained_models/positions/{tumor}_UNMUT_positions.pkl", 'rb') as f:
+        with open(f"/genomeGAN/trained_models/positions/Lymph-UCLL_positions.pkl", 'rb') as f:
            posModel['UNMUT'] = pickle.load(f)
     else:
+        # Counts model
+        countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
+
+        # Mutations model
+        mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
+        
+        # Drivers model and files
+        driversModel:dict = {}
+        driversModel['model'] = torch.load(f"/genomeGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+
+        # Positions model
         with open(f"/genomeGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
            posModel = pickle.load(f)
     
@@ -111,18 +131,45 @@ def preprocess_counts(counts) -> pd.DataFrame:
     
     return(counts)
 
-def simulate_counts(countSynthesizer, nCases) -> pd.DataFrame:
+def simulate_counts(tumor, countSynthesizer, nCases) -> pd.DataFrame:
 
     """
     Function to generate the number of each type of mutation per case
     """
 
-    counts:pd.DataFrame = pd.DataFrame()
-    for _ in range(4):
-        tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
-        counts = pd.concat([counts,tmp])
-    counts = counts.sample(n=nCases)
+    if tumor == "Lymph-CLL":
+        mCases:int = round(nCases*0.42)
+        uCases:int = nCases - mCases
 
+        # MCLL
+        m_counts:pd.DataFrame = pd.DataFrame()
+        for _ in range(4):
+            tmp:pd.DataFrame = countSynthesizer['MUT'].generate_samples(mCases)
+            m_counts = pd.concat([m_counts,tmp])
+        m_counts = m_counts.sample(n=mCases)
+
+        # UCLL
+        u_counts:pd.DataFrame = pd.DataFrame()
+        for _ in range(4):
+            tmp:pd.DataFrame = countSynthesizer['UNMUT'].generate_samples(uCases)
+            u_counts = pd.concat([u_counts,tmp])
+        u_counts = u_counts.sample(n=uCases)
+
+        # Merge
+        counts:pd.DataFrame = pd.concat([m_counts, u_counts])
+        counts.fillna(0, inplace=True)
+        counts.reset_index(drop=True, inplace=True)
+        counts = counts.round(0).astype(int)
+
+    else:
+        counts:pd.DataFrame = pd.DataFrame()
+        for _ in range(4):
+            tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
+            counts = pd.concat([counts,tmp])
+        counts = counts.sample(n=nCases)
+        counts.reset_index(drop=True, inplace=True)
+
+    # Preprocess the counts
     counts = preprocess_counts(counts)
 
     return(counts)
@@ -139,13 +186,30 @@ def simulate_vaf_rank(tumor, nCases) -> list:
 
     return(donor_vafs)
 
-def simulate_drivers(driversSynthesizer, nCases) -> pd.DataFrame:
+def simulate_drivers(tumor, driversSynthesizer, nCases) -> pd.DataFrame:
 
     """
     Function to simulate the driver mutations for each donor
     """
 
-    drivers:pd.DataFrame = driversSynthesizer.generate_samples(nCases)
+    if tumor == "Lymph-CLL":
+        mCases:int = round(nCases*0.42)
+        uCases:int = nCases - mCases
+        
+        # MCLL
+        m_drivers:pd.DataFrame = driversSynthesizer['MUT']['model'].generate_samples(mCases)
+
+        # UCLL
+        u_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model'].generate_samples(uCases)
+
+        # Merge
+        drivers:pd.DataFrame = pd.concat([m_drivers, u_drivers])
+        drivers.fillna(0, inplace=True)
+        drivers.reset_index(drop=True, inplace=True)
+
+    else:
+        drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(nCases)
+    
     drivers = drivers.round(0).astype(int)
 
     return(drivers)
@@ -572,7 +636,7 @@ def chrom2str(chrom) -> str:
     else:
         return str(chrom)
 
-def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID) -> pd.DataFrame:
+def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID) -> pd.DataFrame:
 
     """
     Include driver mutations in the vcf with passenger mutations
@@ -582,7 +646,12 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, d
     drivers_counts = drivers_counts[drivers_counts != 0]
     selected_drivers:pd.DataFrame = pd.DataFrame()
     for driver, n in drivers_counts.items():
-        driver_rows:pd.DataFrame = drivers_mutations[drivers_mutations['driver'] == driver]
+        if drivers_tumor == 'Lymph-MCLL':
+            driver_rows:pd.DataFrame = drivers_mutations['MUT']['mutations'][drivers_mutations['driver'] == driver]
+        elif drivers_tumor == 'Lymph-UCLL':
+            driver_rows:pd.DataFrame = drivers_mutations['UNMUT']['mutations'][drivers_mutations['driver'] == driver]
+        else:
+            driver_rows:pd.DataFrame = drivers_mutations['mutations'][drivers_mutations['driver'] == driver]
         selected_drivers = pd.concat([selected_drivers, driver_rows.sample(n=n, replace=False)], ignore_index=True)
 
     # Set chrom column to str
@@ -614,7 +683,7 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, d
 
     return(vcf)
 
-def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID) -> pd.DataFrame:
+def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID) -> pd.DataFrame:
 
     """
     Convert the pandas DataFrame into a VCF
@@ -665,7 +734,7 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID)
 
     # Assign driver mutations to the VCF
     if drivers_counts.sum() > 0:
-        vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, fasta, donorID)
+        vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID)
 
     # Sort the VCF
     vcf['#CHROM'] = vcf['#CHROM'].apply(chrom2int)
@@ -738,13 +807,13 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
     fasta = Fasta(refGenome)
 
     # Generate the counts for each type of mutation for each case
-    counts:pd.DataFrame = simulate_counts(countModel, nCases)
+    counts:pd.DataFrame = simulate_counts(tumor, countModel, nCases)
 
     # Annotate VAF rank to each donor
     donors_vafRank:list = simulate_vaf_rank(tumor, nCases)
 
     # Simulate driver mutations to each donor
-    donors_drivers: pd.DataFrame = simulate_drivers(driversModel['model'], nCases)
+    donors_drivers: pd.DataFrame = simulate_drivers(tumor, driversModel, nCases)
 
     # Simulate one donor at a time
     muts:pd.DataFrame = pd.DataFrame()
@@ -754,6 +823,12 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         nMut:int = int(case_counts.sum())
         case_rank:str = donors_vafRank[idx]
         case_drivers:pd.Series = donors_drivers.iloc[idx]
+
+        # Detect specific tumor type in case we are simulating Lymph-CLL
+        if tumor == 'Lymph-CLL':
+            drivers_tumor:str = 'Lymph-MCLL' if case_counts['SBS9'] > 0 else 'Lymph-UCLL'
+        else:
+            drivers_tumor:str = tumor
 
         # Gender selection
         gender:str = gender_selection(tumor)
@@ -773,7 +848,7 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
 
         # Create the VCF output
-        vcf = pd2vcf(case_muts, case_drivers, driversModel['mutations'], drivers_vafs, fasta, idx)
+        vcf = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
 
         # Write the VCF
         output:str = out_path(outDir, prefix, tumor, idx+1)
