@@ -119,7 +119,7 @@ docker run --rm -u $(id -u):$(id -g) \
 
 # Singularity
 singularity exec -H ${pwd}:/home \
-            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/scripts/deeptumour/trained_models:/DeepTumour/trained_models
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/genomeGAN_github_backup/deeptumour/trained_models/:/DeepTumour/trained_models
             -B /u/adiaz-navarro/adiaz/databases/hg19/:/reference \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_deeptumour.sif DeepTumour.py \
             --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa
