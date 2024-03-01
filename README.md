@@ -28,12 +28,14 @@ singularity exec -H ${pwd}:/home \
 # Counts
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
+           -v /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
            -it genomegan:training.v0 \
-           trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+           trainCounts --csv /inputs/counts/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
 singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
-            trainCounts --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+            trainCounts --csv /inputs/counts/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
 ## Test trained counts
 docker run --rm -u $(id -u):$(id -g) \
@@ -44,22 +46,26 @@ docker run --rm -u $(id -u):$(id -g) \
 # Mutations
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
+           -v /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
            -it genomegan:training.v0 \
-           trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
+           trainMutations --csv inputs/context/gan_mut_v9_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
 
 singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
-            trainMutations --csv /home/gan_mut_v7_3_CNS-PiloAstro_sig_counts.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
+            trainMutations --csv /inputs/context/gan_mut_v9_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 10000 --batch_size 200 --test_ratio 0.3 --lr 0.002
 
 # Drivers
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
+           -v /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
            -it genomegan:training.v0 \
-           trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+           trainDrivers --csv /inputs/drivers/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
 singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
-            trainDrivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
+            trainDrivers --csv /inputs/drivers/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 230 --batch_size 15 --lr 0.0015
 
 ## Test trained drivers
 docker run --rm -u $(id -u):$(id -g) \
@@ -70,12 +76,14 @@ docker run --rm -u $(id -u):$(id -g) \
 # Test hyperparameters
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
+           -v /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
            -it genomegan:training.v0 \
-           testHyperparameters --cpu 2 --function drivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
+           testHyperparameters --cpu 2 --function drivers --csv /inputs/drivers/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
 
 singularity exec -H ${pwd}:/home \
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/:/inputs \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif launcher.py \
-            testHyperparameters --cpu 2 --function drivers --csv /home/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
+            testHyperparameters --cpu 2 --function drivers --csv /inputs/drivers/gan_drivers_CNS-PiloAstro.csv --prefix CNS-PiloAstro --epochs 100 400 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 
 ```
 
 ## How to train positions using CTGAN model
