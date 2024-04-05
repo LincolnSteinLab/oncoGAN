@@ -246,6 +246,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
         return(counts)
+    
     elif tumor == "CNS-PiloAstro":
         # Model 1
         x1_counts:pd.DataFrame = pd.DataFrame()
@@ -293,8 +294,12 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         
         # Merge
         counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+
+        # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        return(counts)
+    
     elif tumor == "Eso-AdenoCa":
         # Model 1
         x1_counts:pd.DataFrame = pd.DataFrame()
@@ -396,6 +401,23 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
         return(counts)
+    
+    elif tumor == "Kidney-RCC":
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] <= nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            counts = pd.concat([counts,tmp_counts], ignore_index=True)
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+
+        # Return counts
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+        counts.fillna(0, inplace=True)
+        return(counts)
+
     elif tumor == "Liver-HCC":
         # Model 1
         x1_counts:pd.DataFrame = pd.DataFrame()
@@ -423,8 +445,12 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         
         # Merge
         counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+
+        # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        return(counts)
+    
     elif tumor == "Lymph-CLL":
         mCases:int = round(nCases*0.42)
         uCases:int = nCases - mCases
@@ -508,17 +534,10 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         counts:pd.DataFrame = pd.concat([m_counts, u_counts], ignore_index=True)
         counts = counts.sample(frac=1)
         counts.fillna(0, inplace=True)
-    else: 
-        counts:pd.DataFrame = pd.DataFrame()
-        while counts.shape[0] <= nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            counts = pd.concat([counts,tmp_counts], ignore_index=True)
-        counts = counts.sample(n=nCases).reset_index(drop=True)
 
+        # Return counts
+        return(counts)
+        
 def simulate_vaf_rank(tumor, nCases) -> list:
 
     """
@@ -539,6 +558,7 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
 
     if tumor == "Breast-AdenoCa":
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
+        drivers = drivers.round(0).astype(int)
         drivers['ERBB4_Intron'] = drivers.apply(lambda x: 
                                                         np.where((x['ERBB4_Intron'] == 2) | (x['ERBB4_Intron'] == 5),
                                                                  np.random.choice([x['ERBB4_Intron'], x['ERBB4_Intron'] - 1], p=[0.7, 0.3]),
@@ -594,8 +614,27 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                                  np.random.choice([x['ANK3_Intron'], 0], p=[0.4, 0.6]),
                                                                  x['ANK3_Intron']),
                                                         axis=1)
+    elif tumor == "Kideny-RCC":
+        drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
+        drivers = drivers.round(0).astype(int)
+        drivers['VHL_Coding'] = drivers.apply(lambda x: 
+                                                        np.where(x['VHL_Coding'] != 0,
+                                                                 np.random.choice([x['VHL_Coding'], 0], p=[0.8, 0.2]),
+                                                                 x['VHL_Coding']),
+                                                        axis=1)
+        drivers['TSC2_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['TSC2_Intron'] != 0,
+                                                                 np.random.choice([x['TSC2_Intron'], 0], p=[0.4, 0.6]),
+                                                                 x['TSC2_Intron']),
+                                                        axis=1)
+        drivers['MET_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['MET_Intron'] != 0,
+                                                                 np.random.choice([x['MET_Intron'], 0], p=[0.6, 0.4]),
+                                                                 x['MET_Intron']),
+                                                        axis=1)
     elif tumor == "Lymph-MCLL":        
         tmp_drivers:pd.DataFrame = driversSynthesizer['MUT']['model'].generate_samples(10)
+        tmp_drivers = drivers.round(0).astype(int)
         tmp_drivers_CD36:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] != 1].reset_index(drop=True)
         tmp_drivers_CD36_1:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] == 1].sample(frac=0.4).reset_index(drop=True)
         drivers:pd.DataFrame = pd.concat([tmp_drivers_CD36,tmp_drivers_CD36_1], ignore_index=True)
