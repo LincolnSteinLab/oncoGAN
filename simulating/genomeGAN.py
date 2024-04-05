@@ -1367,7 +1367,7 @@ def availTumors():
     List of available tumors to simulate
     """
 
-    tumors:list = [["CNS-PiloAstro", "Liver-HCC", "Lymph-CLL"]]
+    tumors:list = [["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCA", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]]
     tumors:str = '\n'.join(['\t\t'.join(x) for x in tumors])
     click.echo(f"\nThis is the list of available tumor types that can be simulated using genomeGAN:\n\n{tumors}\n")
 
@@ -1378,7 +1378,7 @@ def availTumors():
               show_default=True,
               help="Number of CPUs to use")
 @click.option("--tumor",
-              type=click.Choice(["CNS-PiloAstro","Liver-HCC","Lymph-CLL"]),
+              type=click.Choice(["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCA", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]),
               metavar="TEXT",
               show_choices=False,
               required = True,
