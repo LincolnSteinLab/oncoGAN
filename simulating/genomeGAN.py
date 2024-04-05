@@ -36,6 +36,8 @@ def tumor_models(tumor, device) -> list:
         countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa1_counts.pkl", map_location=device)
         countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa2_counts.pkl", map_location=device)
         countModel['x3'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa3_counts.pkl", map_location=device)
+    elif tumor == "Kidney-RCC":
+        countModel = torch.load(f"/genomeGAN/trained_models/counts/Kidney-RCC_counts.pkl", map_location=device)
     elif tumor == "Liver-HCC":
         countModel:dict = {}
         countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Liver-HCC1_counts.pkl", map_location=device)
@@ -52,8 +54,8 @@ def tumor_models(tumor, device) -> list:
         countModel:dict = {}
         countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine1_counts.pkl", map_location=device)
         countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine2_counts.pkl", map_location=device)
-    else:
-        countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
+    elif tumor == "Prost-AdenoCA":
+        countModel = torch.load(f"/genomeGAN/trained_models/counts/Prost-AdenoCA_counts.pkl", map_location=device)
     
     # Mutations model
     if tumor == "Lymph-CLL":
@@ -629,6 +631,41 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         counts.fillna(0, inplace=True)
         return(counts)
 
+    elif tumor == "Prost-AdenoCA":
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] <= nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            counts = pd.concat([counts,tmp_counts], ignore_index=True)
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+        ## Specific model filters
+        counts['total'] = counts.sum(axis=1)
+        counts['keep'] = counts.apply(lambda x: 
+                                            np.where((x['SBS8'] / x['total'] > 0.1) & (x['total'] > 20000) & (x['total'] < 60000),
+                                                     False,
+                                                     True),
+                                            axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts = counts.drop(['keep'], axis=1).reset_index(drop=True)
+        ## Specific general filters
+        counts['keep'] = counts.apply(lambda x: 
+                                            np.where((x['SBS1'] != 0) & (x['SBS37'] != 0) & (x['SBS1'] / x['total'] > 0.2),
+                                                     False,
+                                                     np.where((x['SBS37'] != 0) & (x['SBS40'] != 0) & ((x['SBS40'] / x['total'] > 0.55) | (x['SBS40'] / x['total'] < 0.25)),
+                                                              False,
+                                                              True)),
+                                            axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts = counts.drop(['total', 'keep'], axis=1).reset_index(drop=True)
+
+        # Return counts
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+        counts.fillna(0, inplace=True)
+        return(counts)
+    
 def simulate_vaf_rank(tumor, nCases) -> list:
 
     """
@@ -743,6 +780,29 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                         np.where(x['PTEN_Coding'] == 1,
                                                                     np.random.choice([x['PTEN_Coding'], 0]),
                                                                     x['PTEN_Coding']),
+                                                        axis=1)
+    elif tumor == "Prost-AdenoCA":
+        drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
+        drivers = drivers.round(0).astype(int)
+        drivers['FIP1L1_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['FIP1L1_Intron'] != 0,
+                                                                 np.random.choice([x['FIP1L1_Intron'], 0], p=[0.7, 0.3]),
+                                                                 x['FIP1L1_Intron']),
+                                                        axis=1)
+        drivers['MAD1L1_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['MAD1L1_Intron'] != 0,
+                                                                 np.random.choice([x['MAD1L1_Intron'], 0], p=[0.7, 0.3]),
+                                                                 x['MAD1L1_Intron']),
+                                                        axis=1)
+        drivers['SCAI_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['SCAI_Intron'] != 0,
+                                                                 np.random.choice([x['SCAI_Intron'], 0], p=[0.7, 0.3]),
+                                                                 x['SCAI_Intron']),
+                                                        axis=1)
+        drivers['ZFHX3_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['ZFHX3_Intron'] > 2,
+                                                                 0,
+                                                                 x['ZFHX3_Intron']),
                                                         axis=1)
     else:
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
