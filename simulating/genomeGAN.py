@@ -188,71 +188,73 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
     """
 
     if tumor == "Breast-AdenoCa":
-        # Model 1
-        x1_counts:pd.DataFrame = pd.DataFrame()
-        while x1_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x1_counts['total'] = x1_counts.sum(axis=1)
-        x1_counts['keep'] = x1_counts.apply(lambda x: 
-                                            np.where(x['SBS5'] / x['total'] < 0.5,
-                                                     np.random.choice([True, False], p=[0.3, 0.7]),
-                                                     True),
-                                            axis=1)
-        x1_counts['keep2'] = x1_counts.apply(lambda x: 
-                                            np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
-                                                      np.random.choice([True, False], p=[0.2, 0.8]),
-                                                      True),
-                                            axis=1)
-        x1_counts['keep'] = x1_counts.apply(lambda x: 
-                                            np.where(x['keep'] & x['keep2'],
-                                                      True,
-                                                      False),
-                                            axis=1)
-        x1_counts = x1_counts.loc[x1_counts["keep"]==True]
-        x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] < nCases:
+            # Model 1
+            x1_counts:pd.DataFrame = pd.DataFrame()
+            while x1_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x1_counts['total'] = x1_counts.sum(axis=1)
+            x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                                np.where(x['SBS5'] / x['total'] < 0.5,
+                                                        np.random.choice([True, False], p=[0.3, 0.7]),
+                                                        True),
+                                                axis=1)
+            x1_counts['keep2'] = x1_counts.apply(lambda x: 
+                                                np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
+                                                        np.random.choice([True, False], p=[0.2, 0.8]),
+                                                        True),
+                                                axis=1)
+            x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                                np.where(x['keep'] & x['keep2'],
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x1_counts = x1_counts.loc[x1_counts["keep"]==True]
+            x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        # Model 2
-        x2_counts:pd.DataFrame = pd.DataFrame()
-        while x2_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x2_counts['total'] = x2_counts.sum(axis=1)
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where(x['SBS1'] / x['total'] < 0.1,
-                                                     np.random.choice([True, False], p=[0.3, 0.7]),
-                                                     True),
-                                            axis=1)
-        x2_counts['keep2'] = x2_counts.apply(lambda x: 
-                                            np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
-                                                      np.random.choice([True, False], p=[0.2, 0.8]),
-                                                      True),
-                                            axis=1)
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where(x['keep'] & x['keep2'],
-                                                     True,
-                                                     False),
-                                            axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
-        
-        # Merge
-        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
-        ## Specific general filters
-        counts['modify'] = np.random.choice([True, False], size=counts.shape[0], p=[0.7, 0.3])
-        counts['SBS2'] = np.where(counts['modify'], counts['SBS2'], 0)
-        counts['SBS13'] = np.where(counts['modify'], counts['SBS13'], 0)
-        counts = counts.drop(columns=['modify'])
+            # Model 2
+            x2_counts:pd.DataFrame = pd.DataFrame()
+            while x2_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x2_counts['total'] = x2_counts.sum(axis=1)
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where(x['SBS1'] / x['total'] < 0.1,
+                                                        np.random.choice([True, False], p=[0.3, 0.7]),
+                                                        True),
+                                                axis=1)
+            x2_counts['keep2'] = x2_counts.apply(lambda x: 
+                                                np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
+                                                        np.random.choice([True, False], p=[0.2, 0.8]),
+                                                        True),
+                                                axis=1)
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where(x['keep'] & x['keep2'],
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            
+            # Merge
+            counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
+            ## Specific general filters
+            counts['modify'] = np.random.choice([True, False], size=counts.shape[0], p=[0.7, 0.3])
+            counts['SBS2'] = np.where(counts['modify'], counts['SBS2'], 0)
+            counts['SBS13'] = np.where(counts['modify'], counts['SBS13'], 0)
+            counts = counts.drop(columns=['modify'])
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -313,101 +315,103 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         return(counts)
     
     elif tumor == "Eso-AdenoCa":
-        # Model 1
-        x1_counts:pd.DataFrame = pd.DataFrame()
-        while x1_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x1_counts['total'] = x1_counts.sum(axis=1)
-        x1_counts['keep'] = x1_counts.apply(lambda x: 
-                                            np.where((x['SBS2'] == 0) & (x['SBS13'] == 0) & (x['SBS28'] == 0),
-                                                     True,
-                                                     False),
-                                            axis=1)
-        x1_counts = x1_counts.loc[x1_counts["keep"]==True]
-        x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] < nCases:
+            # Model 1
+            x1_counts:pd.DataFrame = pd.DataFrame()
+            while x1_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x1_counts['total'] = x1_counts.sum(axis=1)
+            x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                                np.where((x['SBS2'] == 0) & (x['SBS13'] == 0) & (x['SBS28'] == 0),
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x1_counts = x1_counts.loc[x1_counts["keep"]==True]
+            x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        # Model 2
-        x2_counts:pd.DataFrame = pd.DataFrame()
-        while x2_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x2_counts['total'] = x2_counts.sum(axis=1)
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where(x['SBS2'] != 0,
-                                                     True,
-                                                     False),
-                                            axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where(x['SBS13'] != 0,
-                                                     np.random.choice([True, False]),
-                                                     False),
-                                            axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            # Model 2
+            x2_counts:pd.DataFrame = pd.DataFrame()
+            while x2_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x2_counts['total'] = x2_counts.sum(axis=1)
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where(x['SBS2'] != 0,
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where(x['SBS13'] != 0,
+                                                        np.random.choice([True, False]),
+                                                        False),
+                                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        # Model 3
-        x3_counts:pd.DataFrame = pd.DataFrame()
-        while x3_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x3'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x3_counts = pd.concat([x3_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x3_counts['total'] = x3_counts.sum(axis=1)
-        x3_counts['keep'] = x3_counts.apply(lambda x: 
-                                            np.where(x['SBS28'] != 0,
-                                                     True,
-                                                     False),
+            # Model 3
+            x3_counts:pd.DataFrame = pd.DataFrame()
+            while x3_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x3'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x3_counts = pd.concat([x3_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x3_counts['total'] = x3_counts.sum(axis=1)
+            x3_counts['keep'] = x3_counts.apply(lambda x: 
+                                                np.where(x['SBS28'] != 0,
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x3_counts = x3_counts.loc[x3_counts["keep"]==True]
+            x3_counts = x3_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            
+            # Merge
+            counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts, x3_counts], ignore_index=True)
+            ## Specific general filters
+            counts['total'] = counts.sum(axis=1)
+            counts['SBS17a'] = counts.apply(lambda x:
+                                            np.where((x['total'] < 30000) & (x['SBS17a']/x['total'] < 0.1),
+                                                    np.random.choice([x['SBS17a'], 0], p=[0.7, 0.3]),
+                                                    x['SBS17a']),
                                             axis=1)
-        x3_counts = x3_counts.loc[x3_counts["keep"]==True]
-        x3_counts = x3_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
-        
-        # Merge
-        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts, x3_counts], ignore_index=True)
-        ## Specific general filters
-        counts['total'] = counts.sum(axis=1)
-        counts['SBS17a'] = counts.apply(lambda x:
-                                        np.where((x['total'] < 30000) & (x['SBS17a']/x['total'] < 0.1),
-                                                 np.random.choice([x['SBS17a'], 0], p=[0.7, 0.3]),
-                                                 x['SBS17a']),
+            counts['SBS17b'] = counts.apply(lambda x:
+                                            np.where((x['total'] < 30000) & (x['SBS17b']/x['total'] < 0.2),
+                                                    np.random.choice([x['SBS17b'], 0], p=[0.7, 0.3]),
+                                                    x['SBS17b']),
+                                            axis=1)
+            counts['SBS28'] = counts.apply(lambda x:
+                                        np.where(x['SBS28']/x['total'] > 0.25,
+                                                    x['SBS28']/4,
+                                                    np.where(x['SBS28']/x['total'] > 0.15,
+                                                            x['SBS28']/2.5,
+                                                            x['SBS28'])),
+                                            axis=1)
+            counts['keep'] = counts.apply(lambda x:
+                                        np.where((x['SBS17a']/x['total'] > 0.15) & (x['SBS13'] != 0), 
+                                                False,
+                                                np.where((x['SBS17b']/x['total'] > 0.3) & (x['SBS13'] != 0),
+                                                            False,
+                                                            np.where((x['SBS17a'] != 0) & (x['SBS17b'] == 0), 
+                                                                    False,
+                                                                    True))),
                                         axis=1)
-        counts['SBS17b'] = counts.apply(lambda x:
-                                        np.where((x['total'] < 30000) & (x['SBS17b']/x['total'] < 0.2),
-                                                 np.random.choice([x['SBS17b'], 0], p=[0.7, 0.3]),
-                                                 x['SBS17b']),
-                                        axis=1)
-        counts['SBS28'] = counts.apply(lambda x:
-                                       np.where(x['SBS28']/x['total'] > 0.25,
-                                                x['SBS28']/4,
-                                                np.where(x['SBS28']/x['total'] > 0.15,
-                                                         x['SBS28']/2.5,
-                                                         x['SBS28'])),
-                                        axis=1)
-        counts['keep'] = counts.apply(lambda x:
-                                      np.where((x['SBS17a']/x['total'] > 0.15) & (x['SBS13'] != 0), 
-                                               False,
-                                               np.where((x['SBS17b']/x['total'] > 0.3) & (x['SBS13'] != 0),
-                                                        False,
-                                                        np.where((x['SBS17a'] != 0) & (x['SBS17b'] == 0), 
-                                                                 False,
-                                                                 True))),
-                                    axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            counts = counts.loc[counts["keep"]==True]
+            counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -551,80 +555,82 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         return(counts)
     
     elif tumor == "Panc-Endocrine":
-        # Model 1
-        x1_counts:pd.DataFrame = pd.DataFrame()
-        while x1_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] < nCases:
+            # Model 1
+            x1_counts:pd.DataFrame = pd.DataFrame()
+            while x1_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
 
-        # Model 2
-        x2_counts:pd.DataFrame = pd.DataFrame()
-        while x2_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x2_counts['total'] = x2_counts.sum(axis=1)
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where((x['SBS13'] / x['total'] < 0.1) & (x['SBS13'] / x['total'] > 0.02),
-                                                     True,
-                                                     False),
+            # Model 2
+            x2_counts:pd.DataFrame = pd.DataFrame()
+            while x2_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x2_counts['total'] = x2_counts.sum(axis=1)
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where((x['SBS13'] / x['total'] < 0.1) & (x['SBS13'] / x['total'] > 0.02),
+                                                        True,
+                                                        False),
+                                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                np.where(x['SBS2'] / x['total'] > 0.02,
+                                                        np.random.choice([True, False], p=[0.3, 0.7]),
+                                                        True),
+                                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            
+            # Merge
+            counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
+            ## Specific general filters
+            counts['total'] = counts.sum(axis=1)
+            counts['SBS13'] = counts.apply(lambda x:
+                                            np.where((x['SBS13'] / x['total'] > 0.1) & (x['SBS13'] / x['total'] < 0.25),
+                                                    x['SBS13']/3,
+                                                    x['SBS13']),
                                             axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                            np.where(x['SBS2'] / x['total'] > 0.02,
-                                                     np.random.choice([True, False], p=[0.3, 0.7]),
-                                                     True),
+            counts['SBS5'] = counts.apply(lambda x:
+                                            np.where((x['SBS5'] / x['total'] < 0.5) & (x['total'] < 5000),
+                                                    np.random.choice([x['SBS5']*2, x['SBS5']]),
+                                                    x['SBS5']),
                                             axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
-        
-        # Merge
-        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
-        ## Specific general filters
-        counts['total'] = counts.sum(axis=1)
-        counts['SBS13'] = counts.apply(lambda x:
-                                        np.where((x['SBS13'] / x['total'] > 0.1) & (x['SBS13'] / x['total'] < 0.25),
-                                                 x['SBS13']/3,
-                                                 x['SBS13']),
+            counts['keep'] = counts.apply(lambda x:
+                                        np.where(((x['SBS13'] == 0) & (x['SBS2'] != 0)) | ((x['SBS13'] != 0) & (x['SBS2'] == 0)), 
+                                                False,
+                                                True),
                                         axis=1)
-        counts['SBS5'] = counts.apply(lambda x:
-                                        np.where((x['SBS5'] / x['total'] < 0.5) & (x['total'] < 5000),
-                                                np.random.choice([x['SBS5']*2, x['SBS5']]),
-                                                x['SBS5']),
+            counts = counts.loc[counts["keep"]==True]
+            counts['keep'] = counts.apply(lambda x:
+                                        np.where((x['SBS36']/x['total'] < 0.25) & (x['SBS36'] != 0) & (x['SBS2'] != 0), 
+                                                False,
+                                                True),
                                         axis=1)
-        counts['keep'] = counts.apply(lambda x:
-                                      np.where(((x['SBS13'] == 0) & (x['SBS2'] != 0)) | ((x['SBS13'] != 0) & (x['SBS2'] == 0)), 
-                                               False,
-                                               True),
-                                    axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts['keep'] = counts.apply(lambda x:
-                                      np.where((x['SBS36']/x['total'] < 0.25) & (x['SBS36'] != 0) & (x['SBS2'] != 0), 
-                                               False,
-                                               True),
-                                    axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts['keep'] = counts.apply(lambda x:
-                                      np.where((x['SBS5']/x['total'] > 0.7) & (x['SBS13'] != 0), 
-                                               False,
-                                               True),
-                                    axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts['keep'] = counts.apply(lambda x:
-                                      np.where((x['SBS2'] == 0) & (x['SBS13'] == 0) & (x['SBS19'] == 0) & (x['SBS36'] == 0) & (x['SBS30'] != 0), 
-                                               False,
-                                               True),
-                                    axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            counts = counts.loc[counts["keep"]==True]
+            counts['keep'] = counts.apply(lambda x:
+                                        np.where((x['SBS5']/x['total'] > 0.7) & (x['SBS13'] != 0), 
+                                                False,
+                                                True),
+                                        axis=1)
+            counts = counts.loc[counts["keep"]==True]
+            counts['keep'] = counts.apply(lambda x:
+                                        np.where((x['SBS2'] == 0) & (x['SBS13'] == 0) & (x['SBS19'] == 0) & (x['SBS36'] == 0) & (x['SBS30'] != 0), 
+                                                False,
+                                                True),
+                                        axis=1)
+            counts = counts.loc[counts["keep"]==True]
+            counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -633,33 +639,32 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
 
     elif tumor == "Prost-AdenoCA":
         counts:pd.DataFrame = pd.DataFrame()
-        while counts.shape[0] <= nCases:
+        while counts.shape[0] < nCases:
             tmp_counts:pd.DataFrame = pd.DataFrame()
             for _ in range(5):
                 tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
                 tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
             tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
             counts = pd.concat([counts,tmp_counts], ignore_index=True)
-        counts = counts.sample(n=nCases).reset_index(drop=True)
-        ## Specific model filters
-        counts['total'] = counts.sum(axis=1)
-        counts['keep'] = counts.apply(lambda x: 
-                                            np.where((x['SBS8'] / x['total'] > 0.1) & (x['total'] > 20000) & (x['total'] < 60000),
-                                                     False,
-                                                     True),
-                                            axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts = counts.drop(['keep'], axis=1).reset_index(drop=True)
-        ## Specific general filters
-        counts['keep'] = counts.apply(lambda x: 
-                                            np.where((x['SBS1'] != 0) & (x['SBS37'] != 0) & (x['SBS1'] / x['total'] > 0.2),
-                                                     False,
-                                                     np.where((x['SBS37'] != 0) & (x['SBS40'] != 0) & ((x['SBS40'] / x['total'] > 0.55) | (x['SBS40'] / x['total'] < 0.25)),
-                                                              False,
-                                                              True)),
-                                            axis=1)
-        counts = counts.loc[counts["keep"]==True]
-        counts = counts.drop(['total', 'keep'], axis=1).reset_index(drop=True)
+            ## Specific model filters
+            counts['total'] = counts.sum(axis=1)
+            counts['keep'] = counts.apply(lambda x: 
+                                                np.where((x['SBS8'] / x['total'] > 0.1) & (x['total'] > 20000) & (x['total'] < 60000),
+                                                        False,
+                                                        True),
+                                                axis=1)
+            counts = counts.loc[counts["keep"]==True]
+            counts = counts.drop(['keep'], axis=1).reset_index(drop=True)
+            ## Specific general filters
+            counts['keep'] = counts.apply(lambda x: 
+                                                np.where((x['SBS1'] != 0) & (x['SBS37'] != 0) & (x['SBS1'] / x['total'] > 0.2),
+                                                        False,
+                                                        np.where((x['SBS37'] != 0) & (x['SBS40'] != 0) & ((x['SBS40'] / x['total'] > 0.55) | (x['SBS40'] / x['total'] < 0.25)),
+                                                                False,
+                                                                True)),
+                                                axis=1)
+            counts = counts.loc[counts["keep"]==True]
+            counts = counts.drop(['total', 'keep'], axis=1).reset_index(drop=True)
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
