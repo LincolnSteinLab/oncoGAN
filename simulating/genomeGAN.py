@@ -23,7 +23,11 @@ def tumor_models(tumor, device) -> list:
     """
 
     # Counts model
-    if tumor == "CNS-PiloAstro":
+    if tumor == "Breast-AdenoCa":
+        countModel:dict = {}
+        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Breast-AdenoCa1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Breast-AdenoCa2_counts.pkl", map_location=device)
+    elif tumor == "CNS-PiloAstro":
         countModel:dict = {}
         countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/CNS-PiloAstro1_counts.pkl", map_location=device)
         countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/CNS-PiloAstro2_counts.pkl", map_location=device)
@@ -166,7 +170,78 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
     Function to generate the number of each type of mutation per case
     """
 
-    if tumor == "CNS-PiloAstro":
+    if tumor == "Breast-AdenoCa":
+        # Model 1
+        x1_counts:pd.DataFrame = pd.DataFrame()
+        while x1_counts.shape[0] < nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+        ## Specific model filters
+        x1_counts['total'] = x1_counts.sum(axis=1)
+        x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                            np.where(x['SBS5'] / x['total'] < 0.5,
+                                                     np.random.choice([True, False], p=[0.3, 0.7]),
+                                                     True),
+                                            axis=1)
+        x1_counts['keep2'] = x1_counts.apply(lambda x: 
+                                            np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
+                                                      np.random.choice([True, False], p=[0.2, 0.8]),
+                                                      True),
+                                            axis=1)
+        x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                            np.where(x['keep'] & x['keep2'],
+                                                      True,
+                                                      False),
+                                            axis=1)
+        x1_counts = x1_counts.loc[x1_counts["keep"]==True]
+        x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+
+        # Model 2
+        x2_counts:pd.DataFrame = pd.DataFrame()
+        while x2_counts.shape[0] < nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+        ## Specific model filters
+        x2_counts['total'] = x2_counts.sum(axis=1)
+        x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                            np.where(x['SBS1'] / x['total'] < 0.1,
+                                                     np.random.choice([True, False], p=[0.3, 0.7]),
+                                                     True),
+                                            axis=1)
+        x1_counts['keep2'] = x1_counts.apply(lambda x: 
+                                            np.where((x['SBS18'] / x['total'] > 0.05) & (x['SBS18'] / x['total'] < 0.1),
+                                                      np.random.choice([True, False], p=[0.2, 0.8]),
+                                                      True),
+                                            axis=1)
+        x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                            np.where(x['keep'] & x['keep2'],
+                                                     True,
+                                                     False),
+                                            axis=1)
+        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+        
+        # Merge
+        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+        ## Specific general filters
+        counts['modify'] = np.random.choice([True, False], size=counts.shape[0], p=[0.7, 0.3])
+        counts['SBS2'] = np.where(counts['modify'], counts['SBS2'], 0)
+        counts['SBS13'] = np.where(counts['modify'], counts['SBS13'], 0)
+        counts = counts.drop(columns=['modify'])
+
+        # Return counts
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+        counts.fillna(0, inplace=True)
+        return(counts)
+    elif tumor == "CNS-PiloAstro":
         # Model 1
         x1_counts:pd.DataFrame = pd.DataFrame()
         while x1_counts.shape[0] < nCases:
@@ -338,8 +413,6 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             counts = pd.concat([counts,tmp_counts], ignore_index=True)
         counts = counts.sample(n=nCases).reset_index(drop=True)
 
-    return(counts)
-
 def simulate_vaf_rank(tumor, nCases) -> list:
 
     """
@@ -358,7 +431,64 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
     Function to simulate the driver mutations for each donor
     """
 
-    if tumor == "Lymph-MCLL":        
+    if tumor == "Breast-AdenoCa":
+        drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
+        drivers['ERBB4_Intron'] = drivers.apply(lambda x: 
+                                                        np.where((x['ERBB4_Intron'] == 2) | (x['ERBB4_Intron'] == 5),
+                                                                 np.random.choice([x['ERBB4_Intron'], x['ERBB4_Intron'] - 1], p=[0.7, 0.3]),
+                                                                 x['ERBB4_Intron']),
+                                                        axis=1)
+        drivers['ERBB4_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['ERBB4_Intron'] != 0,
+                                                                 np.random.choice([x['ERBB4_Intron'], 0], p=[0.6, 0.4]),
+                                                                 x['ERBB4_Intron']),
+                                                        axis=1)
+        drivers['RUNX1_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['RUNX1_Intron'] != 0,
+                                                                 np.random.choice([x['RUNX1_Intron'], 0], p=[0.4, 0.6]),
+                                                                 x['RUNX1_Intron']),
+                                                        axis=1)
+        drivers['TP53_Coding'] = drivers.apply(lambda x: 
+                                                        np.where(x['TP53_Coding'] != 0,
+                                                                 np.random.choice([x['TP53_Coding'], 0], p=[0.5, 0.5]),
+                                                                 x['TP53_Coding']),
+                                                        axis=1)
+        drivers['MAP3K1_Coding'] = drivers.apply(lambda x: 
+                                                        np.where(x['MAP3K1_Coding'] != 0,
+                                                                 np.random.choice([x['MAP3K1_Coding'], 0], p=[0.5, 0.5]),
+                                                                 x['MAP3K1_Coding']),
+                                                        axis=1)
+        drivers['ARID1B_Coding'] = drivers.apply(lambda x: 
+                                                        np.where(x['ARID1B_Coding'] != 0,
+                                                                 np.random.choice([x['ARID1B_Coding'], 0], p=[0.6, 0.4]),
+                                                                 x['ARID1B_Coding']),
+                                                        axis=1)
+        drivers['NOTCH2_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['NOTCH2_Intron'] != 0,
+                                                                 np.random.choice([x['NOTCH2_Intron'], 0], p=[0.6, 0.4]),
+                                                                 x['NOTCH2_Intron']),
+                                                        axis=1)
+        drivers['INPP4B_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['INPP4B_Intron'] != 1,
+                                                                 np.random.choice([x['INPP4B_Intron'], 0], p=[0.3, 0.7]),
+                                                                 x['INPP4B_Intron']),
+                                                        axis=1)
+        drivers['CBFB_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['CBFB_Intron'] != 1,
+                                                                 np.random.choice([x['CBFB_Intron'], 0], p=[0.5, 0.5]),
+                                                                 x['CBFB_Intron']),
+                                                        axis=1)
+        drivers['STAG2_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['STAG2_Intron'] != 1,
+                                                                 np.random.choice([x['STAG2_Intron'], 0], p=[0.4, 0.6]),
+                                                                 x['STAG2_Intron']),
+                                                        axis=1)
+        drivers['ANK3_Intron'] = drivers.apply(lambda x: 
+                                                        np.where(x['ANK3_Intron'] != 3,
+                                                                 np.random.choice([x['ANK3_Intron'], 0], p=[0.4, 0.6]),
+                                                                 x['ANK3_Intron']),
+                                                        axis=1)
+    elif tumor == "Lymph-MCLL":        
         tmp_drivers:pd.DataFrame = driversSynthesizer['MUT']['model'].generate_samples(10)
         tmp_drivers_CD36:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] != 1].reset_index(drop=True)
         tmp_drivers_CD36_1:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] == 1].sample(frac=0.4).reset_index(drop=True)
