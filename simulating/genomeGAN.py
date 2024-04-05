@@ -48,6 +48,10 @@ def tumor_models(tumor, device) -> list:
         countModel['UNMUT']:dict = {}
         countModel['UNMUT']['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-UCLL1_counts.pkl", map_location=device)
         countModel['UNMUT']['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-UCLL2_counts.pkl", map_location=device)
+    elif tumor == 'Panc-Endocrine':
+        countModel:dict = {}
+        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine2_counts.pkl", map_location=device)
     else:
         countModel = torch.load(f"/genomeGAN/trained_models/counts/{tumor}_counts.pkl", map_location=device)
     
@@ -71,6 +75,12 @@ def tumor_models(tumor, device) -> list:
         driversModel['UNMUT']['model']['x2'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL2_drivers.pkl", map_location=device)
         driversModel['UNMUT']['model']['x3'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL3_drivers.pkl", map_location=device)
         driversModel['UNMUT']['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
+    elif tumor == "Panc-Endocrine":
+        driversModel:dict = {}
+        driversModel['model']:dict = {}
+        driversModel['model']['x1'] = torch.load(f"/genomeGAN/trained_models/drivers/Panc-Endocrine1_drivers.pkl", map_location=device)
+        driversModel['model']['x2'] = torch.load(f"/genomeGAN/trained_models/drivers/Panc-Endocrine2_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
     else:
         driversModel:dict = {}
         driversModel['model'] = torch.load(f"/genomeGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
@@ -537,7 +547,88 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
 
         # Return counts
         return(counts)
+    
+    elif tumor == "Panc-Endocrine":
+        # Model 1
+        x1_counts:pd.DataFrame = pd.DataFrame()
+        while x1_counts.shape[0] < nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+
+        # Model 2
+        x2_counts:pd.DataFrame = pd.DataFrame()
+        while x2_counts.shape[0] < nCases:
+            tmp_counts:pd.DataFrame = pd.DataFrame()
+            for _ in range(5):
+                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+        ## Specific model filters
+        x2_counts['total'] = x2_counts.sum(axis=1)
+        x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                            np.where((x['SBS13'] / x['total'] < 0.1) & (x['SBS13'] / x['total'] > 0.02),
+                                                     True,
+                                                     False),
+                                            axis=1)
+        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+        x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                            np.where(x['SBS2'] / x['total'] > 0.02,
+                                                     np.random.choice([True, False], p=[0.3, 0.7]),
+                                                     True),
+                                            axis=1)
+        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
         
+        # Merge
+        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+        ## Specific general filters
+        counts['total'] = counts.sum(axis=1)
+        counts['SBS13'] = counts.apply(lambda x:
+                                        np.where((x['SBS13'] / x['total'] > 0.1) & (x['SBS13'] / x['total'] < 0.25),
+                                                 x['SBS13']/3,
+                                                 x['SBS13']),
+                                        axis=1)
+        counts['SBS5'] = counts.apply(lambda x:
+                                        np.where((x['SBS5'] / x['total'] < 0.5) & (x['total'] < 5000),
+                                                np.random.choice([x['SBS5']*2, x['SBS5']]),
+                                                x['SBS5']),
+                                        axis=1)
+        counts['keep'] = counts.apply(lambda x:
+                                      np.where(((x['SBS13'] == 0) & (x['SBS2'] != 0)) | ((x['SBS13'] != 0) & (x['SBS2'] == 0)), 
+                                               False,
+                                               True),
+                                    axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts['keep'] = counts.apply(lambda x:
+                                      np.where((x['SBS36']/x['total'] < 0.25) & (x['SBS36'] != 0) & (x['SBS2'] != 0), 
+                                               False,
+                                               True),
+                                    axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts['keep'] = counts.apply(lambda x:
+                                      np.where((x['SBS5']/x['total'] > 0.7) & (x['SBS13'] != 0), 
+                                               False,
+                                               True),
+                                    axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts['keep'] = counts.apply(lambda x:
+                                      np.where((x['SBS2'] == 0) & (x['SBS13'] == 0) & (x['SBS19'] == 0) & (x['SBS36'] == 0) & (x['SBS30'] != 0), 
+                                               False,
+                                               True),
+                                    axis=1)
+        counts = counts.loc[counts["keep"]==True]
+        counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+
+        # Return counts
+        counts = counts.sample(n=nCases).reset_index(drop=True)
+        counts.fillna(0, inplace=True)
+        return(counts)
+
 def simulate_vaf_rank(tumor, nCases) -> list:
 
     """
@@ -643,6 +734,16 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
         x2_tmp_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model']['x2'].generate_samples(10)
         x3_tmp_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model']['x3'].generate_samples(10)
         drivers:pd.DataFrame = pd.concat([x1_tmp_drivers, x2_tmp_drivers, x3_tmp_drivers], ignore_index=True)
+    elif tumor == "Panc-Endocrine":
+        x1_tmp_drivers:pd.DataFrame = driversSynthesizer['model']['x1'].generate_samples(10)
+        x2_tmp_drivers:pd.DataFrame = driversSynthesizer['model']['x2'].generate_samples(10)
+        drivers:pd.DataFrame = pd.concat([x1_tmp_drivers, x2_tmp_drivers], ignore_index=True)
+        drivers = drivers.round(0).astype(int)
+        drivers['PTEN_Coding'] = drivers.apply(lambda x: 
+                                                        np.where(x['PTEN_Coding'] == 1,
+                                                                    np.random.choice([x['PTEN_Coding'], 0]),
+                                                                    x['PTEN_Coding']),
+                                                        axis=1)
     else:
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
 
