@@ -250,10 +250,15 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             
             # Merge
             counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
-            ## Specific general filters
+            ## General filters
             counts['modify'] = np.random.choice([True, False], size=counts.shape[0], p=[0.7, 0.3])
             counts['SBS2'] = np.where(counts['modify'], counts['SBS2'], 0)
             counts['SBS13'] = np.where(counts['modify'], counts['SBS13'], 0)
+            counts['SBS1'] = counts.apply(lambda x: 
+                                          np.where((x['SBS1'] > 300) & (x['SBS1'] < 450),
+                                                   np.random.choice([x['SBS1']*np.random.choice([x/100 for x in range(60, 101, 5)]), x['SBS1']], p=[0.7, 0.3]),
+                                                   x['SBS1']),
+                                                axis=1)
             counts = counts.drop(columns=['modify'])
 
         # Return counts
@@ -382,7 +387,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             
             # Merge
             counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts, x3_counts], ignore_index=True)
-            ## Specific general filters
+            ## General filters
             counts['total'] = counts.sum(axis=1)
             counts['SBS17a'] = counts.apply(lambda x:
                                             np.where((x['total'] < 30000) & (x['SBS17a']/x['total'] < 0.1),
@@ -594,7 +599,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             
             # Merge
             counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
-            ## Specific general filters
+            ## General filters
             counts['total'] = counts.sum(axis=1)
             counts['SBS13'] = counts.apply(lambda x:
                                             np.where((x['SBS13'] / x['total'] > 0.1) & (x['SBS13'] / x['total'] < 0.25),
@@ -655,7 +660,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                 axis=1)
             counts = counts.loc[counts["keep"]==True]
             counts = counts.drop(['keep'], axis=1).reset_index(drop=True)
-            ## Specific general filters
+            ## General filters
             counts['keep'] = counts.apply(lambda x: 
                                                 np.where((x['SBS1'] != 0) & (x['SBS37'] != 0) & (x['SBS1'] / x['total'] > 0.2),
                                                         False,
@@ -1044,13 +1049,16 @@ def get_coordinates(posSynthesizer, nMut) -> pd.DataFrame:
     """
 
     # Generate the windows
-    step1:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = nMut)
+    step1:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = round(nMut*1.2))
     step1 = step1['rank'].value_counts()
 
     # Generate the specific position ranges
     positions:pd.DataFrame = pd.DataFrame()
     for rank, n in zip(step1.index, step1):
-        positions = pd.concat([positions, posSynthesizer[rank].sample(num_rows = n)])
+        try:
+            positions = pd.concat([positions, posSynthesizer[rank].sample(num_rows = n)])
+        except KeyError:
+            continue
     positions['start'] = positions['start']*100
     positions['end'] = positions['start']+100
     positions.reset_index(drop=True, inplace=True)
