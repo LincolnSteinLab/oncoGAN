@@ -97,7 +97,7 @@ docker run --rm -u $(id -u):$(id -g) \
            -it genomegan:training.v0 jupyter
 
 singularity exec -H ${pwd}:/home \
-            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/positions/:/mnt/
+            -B /u/adiaz-navarro/adiaz/projects/genome_simulator/mutations_distribution/gan/files/positions/:/mnt/ \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_training.sif jupyter-lab --no-browser --port 8890 --ip=`hostname` 
 ```
 
@@ -131,5 +131,26 @@ singularity exec -H ${pwd}:/home \
             -B /u/adiaz-navarro/adiaz/databases/hg19/:/reference \
             /u/adiaz-navarro/adiaz/venv/singularity/genomegan_deeptumour.sif DeepTumour.py \
             --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa
+```
 
+## How to run VEP on the simulated VCFs
+
+```bash
+# hg37 VCF
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /home/adiaz-navarro/steinlab/databases/vep:/dir_cache
+           -it ensemblorg/ensembl-vep --offline --format vcf --dir_cache dir_cache  --assembly GRCh37 --symbol --force_overwrite --total_length --numbers --ccds --canonical --biotype --pick --vcf --plugin AlphaMissense --plugin SpliceAI -i CNS-PiloAstro_simulation.vcf -o CNS-PiloAstro_simulation_vep.vcf
+perl convert_cache.pl -species all -version all
+
+# hg38 VCF
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /home/adiaz-navarro/steinlab/databases/vep:/dir_cache
+           -it ensemblorg/ensembl-vep --offline --format vcf --dir_cache dir_cache  --assembly GRCh38 --symbol --force_overwrite --total_length --numbers --ccds --canonical --biotype --pick --vcf --plugin AlphaMissense --plugin SpliceAI -i CNS-PiloAstro_simulation.vcf -o CNS-PiloAstro_simulation_vep.vcf
+
+# Singularity
+singularity exec -H ${pwd}:/home \
+            -B /home/adiaz-navarro/steinlab/databases/vep:/dir_cache
+            /u/adiaz-navarro/adiaz/venv/singularity/ensembl-vep.sif --offline --format vcf --dir_cache dir_cache  --assembly GRCh38 --symbol --force_overwrite --total_length --numbers --ccds --canonical --biotype --pick --vcf --plugin AlphaMissense --plugin SpliceAI -i CNS-PiloAstro_simulation.vcf -o CNS-PiloAstro_simulation_vep.vcf
 ```
