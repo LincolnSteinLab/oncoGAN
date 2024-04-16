@@ -217,7 +217,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                         False),
                                                 axis=1)
             x1_counts = x1_counts.loc[x1_counts["keep"]==True]
-            x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            x1_counts = x1_counts.drop(['keep', 'keep2', 'total'], axis=1).reset_index(drop=True)
 
             # Model 2
             x2_counts:pd.DataFrame = pd.DataFrame()
@@ -246,7 +246,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                         False),
                                                 axis=1)
             x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-            x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            x2_counts = x2_counts.drop(['keep', 'keep2', 'total'], axis=1).reset_index(drop=True)
             
             # Merge
             counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
@@ -1059,14 +1059,20 @@ def get_coordinates(posSynthesizer, nMut) -> pd.DataFrame:
             positions = pd.concat([positions, posSynthesizer[rank].sample(num_rows = n)])
         except KeyError:
             continue
-    positions['start'] = positions['start']*100
-    positions['end'] = positions['start']+100
-    positions.reset_index(drop=True, inplace=True)
+    try: #REVIEW
+        positions['start'] = positions['start']*100
+        positions['end'] = positions['start']+100
+        positions.reset_index(drop=True, inplace=True)
 
-    # Annotate the chromosome
-    positions = assign_chromosome(positions)
+        # Annotate the chromosome
+        positions = assign_chromosome(positions)
 
-    return(positions)
+        return(positions)
+    except KeyError: #REVIEW
+        print("This is how the positions object looks like:")
+        print(positions, end="\n\n\n")
+        print("This is the step1 object:")
+        print(step1, end="\n\n\n")
 
 def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> pd.DataFrame:
 
@@ -1380,7 +1386,7 @@ def availTumors():
     List of available tumors to simulate
     """
 
-    tumors:list = [["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCA", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]]
+    tumors:list = [["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCa", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]]
     tumors:str = '\n'.join(['\t\t'.join(x) for x in tumors])
     click.echo(f"\nThis is the list of available tumor types that can be simulated using genomeGAN:\n\n{tumors}\n")
 
@@ -1391,7 +1397,7 @@ def availTumors():
               show_default=True,
               help="Number of CPUs to use")
 @click.option("--tumor",
-              type=click.Choice(["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCA", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]),
+              type=click.Choice(["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCa", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]),
               metavar="TEXT",
               show_choices=False,
               required = True,
