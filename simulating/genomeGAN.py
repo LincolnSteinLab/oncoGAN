@@ -269,6 +269,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
     
     elif tumor == "CNS-PiloAstro":
@@ -322,6 +323,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
     
     elif tumor == "Eso-AdenoCa":
@@ -426,6 +428,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
     
     elif tumor == "Kidney-RCC":
@@ -442,6 +445,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
 
     elif tumor == "Liver-HCC":
@@ -475,6 +479,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
     
     elif tumor == "Lymph-CLL":
@@ -559,6 +564,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Merge MCLL and UCLL
         counts:pd.DataFrame = pd.concat([m_counts, u_counts], ignore_index=True)
         counts = counts.sample(frac=1)
+        counts = counts.round(0).astype(int)
         counts.fillna(0, inplace=True)
 
         # Return counts
@@ -679,6 +685,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
         return(counts)
     
 def simulate_vaf_rank(tumor, nCases) -> list:
@@ -865,6 +872,7 @@ def filter_muts(file) -> pd.DataFrame:
     # Create the r.ctx and a.ctx columns to be used in the next step
     file["r.ctx"] = file["r.ctx1"]+file["r.ctx2"]+file["r.ctx3"]
     file["a.ctx"] = file["a.ctx1"]+file["a.ctx2"]+file["a.ctx3"]
+    file = file[~(file['r.ctx'].str.contains('N') | file['a.ctx'].str.contains('N'))]
     file.drop(["start", "vaf", "r.ctx1", "r.ctx2", "r.ctx3", "a.ctx1", "a.ctx2", "a.ctx3"], axis=1, inplace=True)
 
     return(file)
