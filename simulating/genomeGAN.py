@@ -259,7 +259,12 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                    np.random.choice([x['SBS1']*np.random.choice([x/100 for x in range(60, 101, 5)]), x['SBS1']], p=[0.7, 0.3]),
                                                    x['SBS1']),
                                                 axis=1)
-            counts = counts.drop(columns=['modify'])
+            counts['SBS2'] = counts.apply(lambda x: 
+                                          np.where((x['SBS2']/x['total'] > 0.12) & (x['SBS2']/x['total'] < 0.2),
+                                                   np.random.choice([x['SBS2']*np.random.choice([x/100 for x in range(25, 40, 5)]), x['SBS2']], p=[0.8, 0.2]),
+                                                   x['SBS2']),
+                                                axis=1)
+            counts = counts.drop(columns=['modify', 'total'])
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
