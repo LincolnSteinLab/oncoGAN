@@ -1055,14 +1055,29 @@ def get_sexual_chrom_usage(tumor, gender) -> dict:
 
     return(sexChrDict)
 
-def get_coordinates(posSynthesizer, nMut) -> pd.DataFrame:
+def get_coordinates(posSynthesizer, nMut, sexChrom) -> pd.DataFrame:
 
     """
     Function to generate the coordinates of the mutations
     """
 
     # Generate the windows
-    step1:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = round(nMut*1.2))
+    if sexChrom == 'X':
+        x_ranks:list = ['[2.88e+07;2.91e+07)', '[2.91e+07;2.94e+07)' , '[2.94e+07;2.97e+07)', '[2.97e+07;3e+07)', '[3e+07;3.03e+07)', '[3.03e+07;3.06e+07)']
+        step1:pd.DataFrame = pd.DataFrame()
+        while step1.value_counts().sum() < nMut:
+            tmp:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = round(nMut*5))
+            tmp = tmp[tmp['rank'].isin(x_ranks)]
+            step1 = pd.concat([step1, tmp], ignore_index=True)
+    elif sexChrom == 'Y':
+        y_ranks:list = ['[3.03e+07;3.06e+07)', '[3.06e+07;3.09e+07)', '[3.09e+07;3.1e+07]']
+        step1:pd.DataFrame = pd.DataFrame()
+        while step1.value_counts().sum() < nMut:
+            tmp:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = round(nMut*5))
+            tmp = tmp[tmp['rank'].isin(y_ranks)]
+            step1 = pd.concat([step1, tmp], ignore_index=True)
+    else:
+        step1:pd.DataFrame = posSynthesizer['step1'].sample(num_rows = round(nMut*1.2))
     step1 = step1['rank'].value_counts()
 
     # Generate the specific position ranges
@@ -1072,20 +1087,14 @@ def get_coordinates(posSynthesizer, nMut) -> pd.DataFrame:
             positions = pd.concat([positions, posSynthesizer[rank].sample(num_rows = n)])
         except KeyError:
             continue
-    try: #REVIEW
-        positions['start'] = positions['start']*100
-        positions['end'] = positions['start']+100
-        positions.reset_index(drop=True, inplace=True)
+    positions['start'] = positions['start']*100
+    positions['end'] = positions['start']+100
+    positions.reset_index(drop=True, inplace=True)
 
-        # Annotate the chromosome
-        positions = assign_chromosome(positions)
+    # Annotate the chromosome
+    positions = assign_chromosome(positions)
 
-        return(positions)
-    except KeyError: #REVIEW
-        print("This is how the positions object looks like:")
-        print(positions, end="\n\n\n")
-        print("This is the step1 object:")
-        print(step1, end="\n\n\n")
+    return(positions)
 
 def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> pd.DataFrame:
 
@@ -1112,7 +1121,7 @@ def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> p
                 sexChr.reset_index(drop=True, inplace=True)
                 update = False
             ## Generate the new positions for autosomal chromosomes
-            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, difference*10)
+            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, difference*10, sexChrom)
             tmp_positions = tmp_positions[tmp_positions['chrom'] != sexChrom]
             ## Update positions database
             try:
@@ -1129,7 +1138,7 @@ def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> p
                 normChr.reset_index(drop=True, inplace=True)
                 update = False
             ## Generate the new positions for sexual chromosomes
-            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, abs(difference)*100) #NOTE - This works, but for chromY could be faster
+            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, abs(difference)*100, sexChrom)
             tmp_positions = tmp_positions[tmp_positions['chrom'] == sexChrom]
             ## Update positions database
             try:
@@ -1152,7 +1161,7 @@ def generate_positions(posSynthesizer, nMut, fasta, cpus, sexChrDict) -> pd.Data
     """
 
     # Get the coordinates of the future positions
-    positions:pd.DataFrame = get_coordinates(posSynthesizer, nMut)
+    positions:pd.DataFrame = get_coordinates(posSynthesizer, nMut, None)
 
     # Update sexual chromosome positions
     for key in sexChrDict.keys():
