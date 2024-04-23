@@ -178,12 +178,16 @@ class MyDataset(Dataset):
               is_flag=True,
               required = False,
               help="Use this tag if your VCF is in hg38 coordinates")
+@click.option("--keep_input", "keep_input",
+              is_flag=True,
+              required = False,
+              help="Use this tag ito also save DeepTumour input as a csv file")
 @click.option("--outDir", "outDir",
               type=click.Path(exists=True, file_okay=False),
               default=os.getcwd(),
               show_default=False,
               help="Directory where save DeepTumour results. Default is the current directory")
-def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, outDir):
+def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, keep_input, outDir):
     
     """
     Predict cancer type from a VCF file using DeepTumour
@@ -199,6 +203,10 @@ def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, outDir):
                 input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, liftOver)])
     else:
         raise ValueError('Please provide either a VCF file or a directory with VCF files')
+    
+    # Save the input file used by DeepTumour
+    if keep_input:
+        input.to_csv(os.path.join(outDir, 'DeepTumour_preprocess_input.csv'), index=False)
     
     # Load the models
     complete_ensemble = torch.load('/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
