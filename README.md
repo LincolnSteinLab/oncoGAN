@@ -111,6 +111,13 @@ docker run --rm -u $(id -u):$(id -g) \
            -v /home/adiaz-navarro/steinlab/databases/hg19/:/reference \
            -it genomegan:deeptumour --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa
 
+# Save DeepTumour input file
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /home/adiaz-navarro/steinlab/docker/genomeGAN/deeptumour/trained_models:/DeepTumour/trained_models \
+           -v /home/adiaz-navarro/steinlab/databases/hg19/:/reference \
+           -it genomegan:deeptumour --vcfFile /home/CNS-PiloAstro_1.vcf --hg19 /reference/hs37d5.fa --keep_input
+
 # Multiple VCFs
 docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
