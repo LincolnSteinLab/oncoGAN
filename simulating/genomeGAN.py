@@ -885,11 +885,11 @@ def manually_simulate_dnp_tnp(mutSynthesizer, nMut, mut_type, tumor) -> pd.DataF
     
         nt_dict = {'A':['C', 'G', 'T'], 'C':['A', 'G', 'T'], 'G':['A', 'C', 'T'], 'T':['A', 'C', 'G']}
         if tumor == "Lymph-MCLL":
-            muts = mutSynthesizer['MUT'].generate_samples(int(nMut)*2)
+            muts = mutSynthesizer['MUT'].generate_samples(int(nMut)*20)
         elif tumor == "Lymph-UCLL":
-            muts = mutSynthesizer['UNMUT'].generate_samples(int(nMut)*2)
+            muts = mutSynthesizer['UNMUT'].generate_samples(int(nMut)*20)
         else:
-            muts = mutSynthesizer.generate_samples(int(nMut)*2)
+            muts = mutSynthesizer.generate_samples(int(nMut)*20)
         muts = filter_muts(muts)
         muts = muts[muts['mut'] == 'SNP']
         muts = muts.take(indices=range(int(nMut)), axis=0)
