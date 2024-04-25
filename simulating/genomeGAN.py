@@ -764,6 +764,7 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                                  np.random.choice([x['ANK3_Intron'], 0], p=[0.4, 0.6]),
                                                                  x['ANK3_Intron']),
                                                         axis=1)
+    
     elif tumor == "Kideny-RCC":
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
         drivers = drivers.round(0).astype(int)
@@ -782,17 +783,20 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                                  np.random.choice([x['MET_Intron'], 0], p=[0.6, 0.4]),
                                                                  x['MET_Intron']),
                                                         axis=1)
+    
     elif tumor == "Lymph-MCLL":        
         tmp_drivers:pd.DataFrame = driversSynthesizer['MUT']['model'].generate_samples(10)
-        tmp_drivers = drivers.round(0).astype(int)
+        tmp_drivers = tmp_drivers.round(0).astype(int)
         tmp_drivers_CD36:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] != 1].reset_index(drop=True)
         tmp_drivers_CD36_1:pd.DataFrame = tmp_drivers[tmp_drivers['CD36_Intron'] == 1].sample(frac=0.4).reset_index(drop=True)
         drivers:pd.DataFrame = pd.concat([tmp_drivers_CD36,tmp_drivers_CD36_1], ignore_index=True)
+    
     elif tumor == "Lymph-UCLL":
         x1_tmp_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model']['x1'].generate_samples(10)
         x2_tmp_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model']['x2'].generate_samples(10)
         x3_tmp_drivers:pd.DataFrame = driversSynthesizer['UNMUT']['model']['x3'].generate_samples(10)
         drivers:pd.DataFrame = pd.concat([x1_tmp_drivers, x2_tmp_drivers, x3_tmp_drivers], ignore_index=True)
+   
     elif tumor == "Panc-Endocrine":
         x1_tmp_drivers:pd.DataFrame = driversSynthesizer['model']['x1'].generate_samples(10)
         x2_tmp_drivers:pd.DataFrame = driversSynthesizer['model']['x2'].generate_samples(10)
@@ -803,6 +807,7 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                                     np.random.choice([x['PTEN_Coding'], 0]),
                                                                     x['PTEN_Coding']),
                                                         axis=1)
+    
     elif tumor == "Prost-AdenoCA":
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
         drivers = drivers.round(0).astype(int)
@@ -826,6 +831,7 @@ def simulate_drivers(tumor, driversSynthesizer) -> pd.DataFrame:
                                                                  0,
                                                                  x['ZFHX3_Intron']),
                                                         axis=1)
+    
     else:
         drivers:pd.DataFrame = driversSynthesizer['model'].generate_samples(10)
 
@@ -1121,7 +1127,7 @@ def update_sexual_chrom_positions(positions, sexChrom, exp, posSynthesizer) -> p
                 sexChr.reset_index(drop=True, inplace=True)
                 update = False
             ## Generate the new positions for autosomal chromosomes
-            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, difference*10, sexChrom)
+            tmp_positions:pd.DataFrame = get_coordinates(posSynthesizer, difference*10, None)
             tmp_positions = tmp_positions[tmp_positions['chrom'] != sexChrom]
             ## Update positions database
             try:
