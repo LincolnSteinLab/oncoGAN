@@ -18,7 +18,7 @@ cuda.empty_cache()
 @click.option("--csv",
               type=click.Path(exists=True, file_okay=True),
               required=True,
-              help="CSV file with the counts used to train the model")
+              help="CSV file with the mutations used to train the model")
 @click.option('--prefix',
               type=click.STRING,
               required=True,
