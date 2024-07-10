@@ -120,7 +120,7 @@ def out_path(outDir, prefix, tumor, n) -> click.Path:
     
     return(output)
 
-def preprocess_counts(counts, nCases, tumor, corrections, exclusions) -> pd.DataFrame:
+def preprocess_counts(counts, tumor, corrections, exclusions) -> pd.DataFrame:
     
     """
     Function to preprocess the counts
@@ -133,7 +133,8 @@ def preprocess_counts(counts, nCases, tumor, corrections, exclusions) -> pd.Data
     exclusions = exclusions.drop('tumor', axis=1).reset_index(drop=True)
 
     # Assign a donor index
-    counts['donor'] = [i for i in range(nCases*5)]
+    counts = counts.astype(float)
+    counts['donor'] = [i for i in range(counts.shape[0])]
     
     # Pivot longer counts
     counts = counts.melt(id_vars=['donor'],var_name="mutations", value_name="count")
@@ -161,7 +162,7 @@ def preprocess_counts(counts, nCases, tumor, corrections, exclusions) -> pd.Data
     # Return the table to the original format
     counts = counts.drop(columns=['clean', 'max', 'min', 'total', 'count_perc', 'filter_count_perc', 'removed', 'updated_count_perc'])
     counts = counts.pivot(index='donor', columns='mutations', values='count').reset_index(drop=True).rename_axis(None, axis=1)
-    counts = counts.dropna(axis=0, how='any').astype(int).reset_index(drop=True)
+    counts = counts.dropna(axis=0, how='any').round(0).astype(int).reset_index(drop=True)
     
     # Check that there is a column for each mutation and if not initialize it
     counts = counts.assign(**{col:0 for col in ["DNP", "TNP", "INS", "DEL"] if col not in counts.columns})
@@ -197,7 +198,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x1_counts['total'] = x1_counts.sum(axis=1)
@@ -226,7 +227,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x2_counts['total'] = x2_counts.sum(axis=1)
@@ -251,6 +252,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             # Merge
             counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
             ## General filters
+            counts['total'] = counts.sum(axis=1)
             counts['modify'] = np.random.choice([True, False], size=counts.shape[0], p=[0.7, 0.3])
             counts['SBS2'] = np.where(counts['modify'], counts['SBS2'], 0)
             counts['SBS13'] = np.where(counts['modify'], counts['SBS13'], 0)
@@ -264,7 +266,23 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                    np.random.choice([x['SBS2']*np.random.choice([x/100 for x in range(25, 40, 5)]), x['SBS2']], p=[0.8, 0.2]),
                                                    x['SBS2']),
                                                 axis=1)
-            counts = counts.drop(columns=['modify', 'total'])
+            counts['keep'] = counts.apply(lambda x:
+                                          np.where(x['SBS8'] == 0,
+                                                   np.random.choice([True, False], p=[0.8, 0.2]),
+                                                   True),
+                                                axis=1)
+            counts = counts.loc[counts["keep"]==True]
+            counts = counts.drop(columns=['modify', 'total', 'keep'])
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -273,52 +291,64 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         return(counts)
     
     elif tumor == "CNS-PiloAstro":
-        # Model 1
-        x1_counts:pd.DataFrame = pd.DataFrame()
-        while x1_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x1_counts['total'] = x1_counts.sum(axis=1)
-        x1_counts['keep'] = x1_counts.apply(lambda x: 
-                                                np.where(x['total'] > 500,
-                                                        np.where(~((x['SBS8'] != 0) | (x['SBS23'] != 0)),
-                                                                np.random.choice([True, False], p=[0.7, 0.3]),
-                                                                True),
-                                                        np.where((x['SBS8'] != 0) | (x['SBS19'] != 0) | (x['SBS23'] != 0),
-                                                                    True,
-                                                                    np.random.choice([True, False]))),
-                            axis=1)
-        x1_counts = x1_counts.loc[x1_counts["keep"]==True]
-        x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] < nCases:
+            # Model 1
+            x1_counts:pd.DataFrame = pd.DataFrame()
+            while x1_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
+                x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x1_counts['total'] = x1_counts.sum(axis=1)
+            x1_counts['keep'] = x1_counts.apply(lambda x: 
+                                                    np.where(x['total'] > 500,
+                                                            np.where(~((x['SBS8'] != 0) | (x['SBS23'] != 0)),
+                                                                    np.random.choice([True, False], p=[0.7, 0.3]),
+                                                                    True),
+                                                            np.where((x['SBS8'] != 0) | (x['SBS19'] != 0) | (x['SBS23'] != 0),
+                                                                        True,
+                                                                        np.random.choice([True, False]))),
+                                axis=1)
+            x1_counts = x1_counts.loc[x1_counts["keep"]==True]
+            x1_counts = x1_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        # Model 2
-        x2_counts:pd.DataFrame = pd.DataFrame()
-        while x2_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x2_counts['total'] = x2_counts.sum(axis=1)
-        x2_counts['keep'] = x2_counts.apply(lambda x: 
-                                                np.where(x['total'] > 500,
-                                                        False,
-                                                        np.where((x['SBS8'] != 0) | (x['SBS19'] != 0) | (x['SBS23'] != 0),
-                                                                    False,
-                                                                    np.random.choice([True, False]))),
-                            axis=1)
-        x2_counts = x2_counts.loc[x2_counts["keep"]==True]
-        x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            # Model 2
+            x2_counts:pd.DataFrame = pd.DataFrame()
+            while x2_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
+                x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x2_counts['total'] = x2_counts.sum(axis=1)
+            x2_counts['keep'] = x2_counts.apply(lambda x: 
+                                                    np.where(x['total'] > 500,
+                                                            False,
+                                                            np.where((x['SBS8'] != 0) | (x['SBS19'] != 0) | (x['SBS23'] != 0),
+                                                                        False,
+                                                                        np.random.choice([True, False]))),
+                                axis=1)
+            x2_counts = x2_counts.loc[x2_counts["keep"]==True]
+            x2_counts = x2_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
         
-        # Merge
-        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+            # Merge
+            counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -336,7 +366,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x1_counts['total'] = x1_counts.sum(axis=1)
@@ -355,7 +385,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x2_counts['total'] = x2_counts.sum(axis=1)
@@ -380,7 +410,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x3'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x3_counts = pd.concat([x3_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x3_counts['total'] = x3_counts.sum(axis=1)
@@ -425,6 +455,16 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             counts = counts.loc[counts["keep"]==True]
             counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
+
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
@@ -438,9 +478,18 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             for _ in range(5):
                 tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
                 tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
             counts = pd.concat([counts,tmp_counts], ignore_index=True)
-        counts = counts.sample(n=nCases).reset_index(drop=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -449,32 +498,44 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         return(counts)
 
     elif tumor == "Liver-HCC":
-        # Model 1
-        x1_counts:pd.DataFrame = pd.DataFrame()
-        while x1_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x1_counts = x1_counts.sample(frac = 0.90).reset_index(drop=True)
+        counts:pd.DataFrame = pd.DataFrame()
+        while counts.shape[0] < nCases:
+            # Model 1
+            x1_counts:pd.DataFrame = pd.DataFrame()
+            while x1_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
+                x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x1_counts = x1_counts.sample(frac = 0.90).reset_index(drop=True)
 
-        # Model 2
-        x2_counts:pd.DataFrame = pd.DataFrame()
-        while x2_counts.shape[0] < nCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
-            x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x2_counts = x2_counts.loc[x2_counts["SBS8"]!=0]
-        
-        # Merge
-        counts:pd.DataFrame = pd.concat([x1_counts, x2_counts], ignore_index=True)
+            # Model 2
+            x2_counts:pd.DataFrame = pd.DataFrame()
+            while x2_counts.shape[0] < nCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
+                x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x2_counts = x2_counts.loc[x2_counts["SBS8"]!=0]
+            
+            # Merge
+            counts:pd.DataFrame = pd.concat([counts, x1_counts, x2_counts], ignore_index=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
@@ -487,85 +548,113 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
         uCases:int = nCases - mCases
 
         # MCLL
-        ## Model 1
-        x1m_counts:pd.DataFrame = pd.DataFrame()
-        while x1m_counts.shape[0] < mCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['MUT']['x1'].generate_samples(mCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, mCases, 'Lymph-MCLL', corrections, exclusions)
-            x1m_counts = pd.concat([x1m_counts,tmp_counts], ignore_index=True)
-        ## Specific model filters
-        x1m_counts['total'] = x1m_counts.sum(axis=1)
-        x1m_counts['keep'] = x1m_counts.apply(lambda x: 
-                                                np.where((x['SBS8']/x['total']*100 >= 5) & (x['SBS8']/x['total']*100 <= 10),
-                                                        False,
-                                                        True),
-                            axis=1)
-        x2m_n_keep = x1m_counts.loc[x1m_counts["keep"]==False].shape[0]
-        x1m_counts = x1m_counts.loc[x1m_counts["keep"]==True]
-        x1m_counts = x1m_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+        m_counts:pd.DataFrame = pd.DataFrame()
+        while m_counts.shape[0] < nCases:
+            ## Model 1
+            x1m_counts:pd.DataFrame = pd.DataFrame()
+            while x1m_counts.shape[0] < mCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['MUT']['x1'].generate_samples(mCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, 'Lymph-MCLL', corrections, exclusions)
+                x1m_counts = pd.concat([x1m_counts,tmp_counts], ignore_index=True)
+            ## Specific model filters
+            x1m_counts['total'] = x1m_counts.sum(axis=1)
+            x1m_counts['keep'] = x1m_counts.apply(lambda x: 
+                                                    np.where((x['SBS8']/x['total']*100 >= 5) & (x['SBS8']/x['total']*100 <= 10),
+                                                            False,
+                                                            True),
+                                axis=1)
+            x2m_n_keep = x1m_counts.loc[x1m_counts["keep"]==False].shape[0]
+            x1m_counts = x1m_counts.loc[x1m_counts["keep"]==True]
+            x1m_counts = x1m_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        ## Model 2
-        x2m_counts:pd.DataFrame = pd.DataFrame()
-        while x2m_counts.shape[0] < mCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['MUT']['x2'].generate_samples(mCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, mCases, 'Lymph-MCLL', corrections, exclusions)
-            x2m_counts = pd.concat([x2m_counts,tmp_counts], ignore_index=True)
-        ### Specific model filters
-        x2m_counts = x2m_counts.sample(n=x2m_n_keep)
+            ## Model 2
+            x2m_counts:pd.DataFrame = pd.DataFrame()
+            while x2m_counts.shape[0] < mCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['MUT']['x2'].generate_samples(mCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, 'Lymph-MCLL', corrections, exclusions)
+                x2m_counts = pd.concat([x2m_counts,tmp_counts], ignore_index=True)
+            ### Specific model filters
+            x2m_counts = x2m_counts.sample(n=x2m_n_keep)
 
-        ## Merge
-        m_counts:pd.DataFrame = pd.concat([x1m_counts, x2m_counts], ignore_index=True)
+            ## Merge
+            m_counts:pd.DataFrame = pd.concat([m_counts, x1m_counts, x2m_counts], ignore_index=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = m_counts.shape[0]
+                m_counts = preprocess_counts(m_counts, tumor, corrections, exclusions)
+                end_shape:int = m_counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
+        
+        # Return MCLL counts
         m_counts = m_counts.sample(n=mCases).reset_index(drop=True)
         m_counts.fillna(0, inplace=True)
 
         # UCLL
-        ## Model 1
-        x1u_counts:pd.DataFrame = pd.DataFrame()
-        while x1u_counts.shape[0] < mCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['UNMUT']['x1'].generate_samples(uCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, uCases, 'Lymph-UCLL', corrections, exclusions)
-            x1u_counts = pd.concat([x1u_counts,tmp_counts], ignore_index=True)
-        ### Specific model filters
-        x1u_counts = x1u_counts.sample(frac=0.85)
+        u_counts:pd.DataFrame = pd.DataFrame()
+        while u_counts.shape[0] < nCases:
+            ## Model 1
+            x1u_counts:pd.DataFrame = pd.DataFrame()
+            while x1u_counts.shape[0] < uCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['UNMUT']['x1'].generate_samples(uCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, 'Lymph-UCLL', corrections, exclusions)
+                x1u_counts = pd.concat([x1u_counts,tmp_counts], ignore_index=True)
+            ### Specific model filters
+            x1u_counts = x1u_counts.sample(frac=0.85)
 
-        ## Model 2
-        x2u_counts:pd.DataFrame = pd.DataFrame()
-        while x2u_counts.shape[0] < uCases:
-            tmp_counts:pd.DataFrame = pd.DataFrame()
-            for _ in range(5):
-                tmp:pd.DataFrame = countSynthesizer['UNMUT']['x2'].generate_samples(uCases)
-                tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, uCases, 'Lymph-UCLL', corrections, exclusions)
-            x2u_counts = pd.concat([x2u_counts,tmp_counts], ignore_index=True)
-        ### Specific model filters
-        x2u_counts['total'] = x2u_counts.sum(axis=1)
-        x2u_counts['keep'] = x2u_counts.apply(lambda x: 
-                                                np.where((x['SBS5']/x['total']*100 >= 75),
-                                                        True,
-                                                        False),
-                            axis=1)
-        x2u_counts = x2u_counts.loc[x2u_counts["keep"]==True]
-        x2u_counts = x2u_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
+            ## Model 2
+            x2u_counts:pd.DataFrame = pd.DataFrame()
+            while x2u_counts.shape[0] < uCases:
+                tmp_counts:pd.DataFrame = pd.DataFrame()
+                for _ in range(5):
+                    tmp:pd.DataFrame = countSynthesizer['UNMUT']['x2'].generate_samples(uCases)
+                    tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
+                tmp_counts = preprocess_counts(tmp_counts, 'Lymph-UCLL', corrections, exclusions)
+                x2u_counts = pd.concat([x2u_counts,tmp_counts], ignore_index=True)
+            ### Specific model filters
+            x2u_counts['total'] = x2u_counts.sum(axis=1)
+            x2u_counts['keep'] = x2u_counts.apply(lambda x: 
+                                                    np.where((x['SBS5']/x['total']*100 >= 75),
+                                                            True,
+                                                            False),
+                                axis=1)
+            x2u_counts = x2u_counts.loc[x2u_counts["keep"]==True]
+            x2u_counts = x2u_counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
-        ## Merge
-        u_counts:pd.DataFrame = pd.concat([x1u_counts, x2u_counts], ignore_index=True)
+            ## Merge
+            u_counts:pd.DataFrame = pd.concat([u_counts, x1u_counts, x2u_counts], ignore_index=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = u_counts.shape[0]
+                u_counts = preprocess_counts(u_counts, tumor, corrections, exclusions)
+                end_shape:int = u_counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
+        
+        # Return UCLL counts
         u_counts = u_counts.sample(n=uCases).reset_index(drop=True)
         u_counts.fillna(0, inplace=True)
 
         # Merge MCLL and UCLL
         counts:pd.DataFrame = pd.concat([m_counts, u_counts], ignore_index=True)
         counts = counts.sample(frac=1)
-        counts = counts.round(0).astype(int)
         counts.fillna(0, inplace=True)
+        counts = counts.round(0).astype(int)
 
         # Return counts
         return(counts)
@@ -580,7 +669,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x1'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x1_counts = pd.concat([x1_counts,tmp_counts], ignore_index=True)
 
             # Model 2
@@ -590,7 +679,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                 for _ in range(5):
                     tmp:pd.DataFrame = countSynthesizer['x2'].generate_samples(nCases)
                     tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-                tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+                tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
                 x2_counts = pd.concat([x2_counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             x2_counts['total'] = x2_counts.sum(axis=1)
@@ -648,6 +737,16 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             counts = counts.loc[counts["keep"]==True]
             counts = counts.drop(['keep', 'total'], axis=1).reset_index(drop=True)
 
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
+
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
         counts.fillna(0, inplace=True)
@@ -660,7 +759,7 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
             for _ in range(5):
                 tmp:pd.DataFrame = countSynthesizer.generate_samples(nCases)
                 tmp_counts = pd.concat([tmp_counts,tmp], ignore_index=True)
-            tmp_counts = preprocess_counts(tmp_counts, nCases, tumor, corrections, exclusions)
+            tmp_counts = preprocess_counts(tmp_counts, tumor, corrections, exclusions)
             counts = pd.concat([counts,tmp_counts], ignore_index=True)
             ## Specific model filters
             counts['total'] = counts.sum(axis=1)
@@ -681,6 +780,16 @@ def simulate_counts(tumor, countSynthesizer, nCases, corrections, exclusions) ->
                                                 axis=1)
             counts = counts.loc[counts["keep"]==True]
             counts = counts.drop(['total', 'keep'], axis=1).reset_index(drop=True)
+
+            # Be sure donors' counts meet requirements
+            i:int = 0
+            while True:
+                initial_shape:int = counts.shape[0]
+                counts = preprocess_counts(counts, tumor, corrections, exclusions)
+                end_shape:int = counts.shape[0]
+                i += 1
+                if (initial_shape == end_shape) | (i > 10):
+                    break
 
         # Return counts
         counts = counts.sample(n=nCases).reset_index(drop=True)
