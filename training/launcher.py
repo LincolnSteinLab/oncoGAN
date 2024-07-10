@@ -5,6 +5,7 @@ import click
 import subprocess
 from ctabgan.train_counts import trainCountsClick
 from ctabgan.train_mutations import trainMutations
+from ctabgan.train_artifacts import trainArtifacts
 from ctabgan.train_drivers import trainDriversClick
 from ctabgan.test_hyperparameters import testHyperparameters
 from ctabgan.use_model import useModel
@@ -27,11 +28,12 @@ def jupyter(port):
 
     subprocess.run(["/bin/bash", "-c", f"jupyter-lab --no-browser --port {port} --ip=$(hostname)"])
 
-cli.add_command(trainCountsClick)
-cli.add_command(trainMutations)
-cli.add_command(trainDriversClick)
-cli.add_command(testHyperparameters)
-cli.add_command(useModel)
 cli.add_command(jupyter)
+cli.add_command(testHyperparameters)
+cli.add_command(trainArtifacts)
+cli.add_command(trainCountsClick)
+cli.add_command(trainDriversClick)
+cli.add_command(trainMutations)
+cli.add_command(useModel)
 if __name__ == '__main__':
     cli()
