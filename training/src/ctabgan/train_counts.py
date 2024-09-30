@@ -2,11 +2,12 @@
 
 # Import model path
 import sys
-sys.path.append('/genomeGAN/ctabgan/')
+sys.path.append('/oncoGAN/ctabgan/')
 
 # Import modules
 import os
 import click
+import ast
 import pandas as pd
 from model.ctabgan import CTABGAN
 from model.eval.evaluation import get_utility_metrics,stat_sim,privacy_metrics
@@ -14,21 +15,28 @@ from torch import cuda, save
 
 cuda.empty_cache()
 
-def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable) -> None:
+def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable) -> None:
 
+    # Parse columns type
+    categorical_columns = [] if categorical_columns == None else categorical_columns.strip().split(',')
+    log_columns = [] if log_columns == None else log_columns.strip().split(',')
+    integer_columns = [] if integer_columns == None else integer_columns.strip().split(',')
+    general_columns = [] if general_columns == None else general_columns.strip().split(',')
+    mixed_columns = {} if mixed_columns == None else ast.literal_eval(mixed_columns)
+
+    
     # Get training file information
-    colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
     n:int = pd.read_csv(csv).shape[0]
 
     # Initializing the synthesizer object and specifying input parameters
     ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default
     synthesizer = CTABGAN(raw_csv_path = csv,
                           test_ratio = test_ratio,
-                          categorical_columns = [],
-                          log_columns = [],
-                          mixed_columns = {},
-                          general_columns= [],
-                          integer_columns = colnames,
+                          categorical_columns = categorical_columns,
+                          log_columns = log_columns,
+                          mixed_columns = mixed_columns,
+                          general_columns= general_columns,
+                          integer_columns = integer_columns,
                           problem_type= {None: None},
                           epochs = epochs,
                           batch_size = batch_size,
@@ -90,18 +98,38 @@ def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_di
               default=2e-4,
               show_default=True,
               help="Learning rate")
+@click.option("--categorical_columns",
+              type=click.STRING,
+              default = None,
+              help="Categorical columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--log_columns",
+              type=click.STRING,
+              default = None,
+              help="Log columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--integer_columns",
+              type=click.STRING,
+              default = None,
+              help="Integer columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--mixed_columns",
+              type=click.STRING,
+              default = None,
+              help="mixed columns. Dictionary string with the variable name as the key and integer values that should be considered categorical in a list format (e.g. \"{'len': [0]}\")")
+@click.option("--general_columns",
+              type=click.STRING,
+              default = None,
+              help="general columns. Comma separated with no space (e.g. x,y,z)")
 @click.option('--no-tqdm', 'tqdm_disable',
               is_flag=True,
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def trainCountsClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+def trainCountsClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
 
     """
     Train a counts CTABGAN model
     """
 
-    trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable)
+    trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns,tqdm_disable)
 
 if __name__ == '__main__':
     trainCountsClick()

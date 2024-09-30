@@ -3,7 +3,7 @@ import re
 import pandas as pd
 import allel
 from Bio.Seq import reverse_complement
-from liftover import get_lifter
+from liftover import ChainFile
 from pyfaidx import Fasta
 
 def hg38tohg19(vcf:pd.DataFrame) -> pd.DataFrame:
@@ -12,7 +12,7 @@ def hg38tohg19(vcf:pd.DataFrame) -> pd.DataFrame:
     Convert hg38 coordinates to hg19
     """
 
-    converter = get_lifter('hg38', 'hg19')
+    converter = ChainFile('/.liftover/hg38ToHg19.over.chain.gz')
     for i,row in vcf.iterrows():
         chrom:str = str(row['CHROM'])
         pos:int = int(row['POS'])

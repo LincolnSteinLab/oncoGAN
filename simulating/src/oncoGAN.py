@@ -1,7 +1,7 @@
 #!/usr/local/bin/python3
 
 import sys
-sys.path.append('/genomeGAN/')
+sys.path.append('/oncoGAN/')
 
 import os
 import re
@@ -12,6 +12,7 @@ import random
 import pandas as pd
 import numpy as np
 import multiprocessing
+from liftover import ChainFile
 from tqdm import tqdm
 from pyfaidx import Fasta
 
@@ -25,85 +26,85 @@ def tumor_models(tumor, device) -> list:
     # Counts model
     if tumor == "Breast-AdenoCa":
         countModel:dict = {}
-        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Breast-AdenoCa1_counts.pkl", map_location=device)
-        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Breast-AdenoCa2_counts.pkl", map_location=device)
+        countModel['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Breast-AdenoCa1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Breast-AdenoCa2_counts.pkl", map_location=device)
     elif tumor == "CNS-PiloAstro":
         countModel:dict = {}
-        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/CNS-PiloAstro1_counts.pkl", map_location=device)
-        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/CNS-PiloAstro2_counts.pkl", map_location=device)
+        countModel['x1'] = torch.load(f"/oncoGAN/trained_models/counts/CNS-PiloAstro1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/CNS-PiloAstro2_counts.pkl", map_location=device)
     elif tumor == "Eso-AdenoCa":
         countModel:dict = {}
-        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa1_counts.pkl", map_location=device)
-        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa2_counts.pkl", map_location=device)
-        countModel['x3'] = torch.load(f"/genomeGAN/trained_models/counts/Eso-AdenoCa3_counts.pkl", map_location=device)
+        countModel['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Eso-AdenoCa1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Eso-AdenoCa2_counts.pkl", map_location=device)
+        countModel['x3'] = torch.load(f"/oncoGAN/trained_models/counts/Eso-AdenoCa3_counts.pkl", map_location=device)
     elif tumor == "Kidney-RCC":
-        countModel = torch.load(f"/genomeGAN/trained_models/counts/Kidney-RCC_counts.pkl", map_location=device)
+        countModel = torch.load(f"/oncoGAN/trained_models/counts/Kidney-RCC_counts.pkl", map_location=device)
     elif tumor == "Liver-HCC":
         countModel:dict = {}
-        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Liver-HCC1_counts.pkl", map_location=device)
-        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Liver-HCC2_counts.pkl", map_location=device)
+        countModel['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Liver-HCC1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Liver-HCC2_counts.pkl", map_location=device)
     elif tumor == "Lymph-CLL":
         countModel:dict = {}
         countModel['MUT']:dict = {}
-        countModel['MUT']['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-MCLL1_counts.pkl", map_location=device)
-        countModel['MUT']['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-MCLL2_counts.pkl", map_location=device)
+        countModel['MUT']['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Lymph-MCLL1_counts.pkl", map_location=device)
+        countModel['MUT']['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Lymph-MCLL2_counts.pkl", map_location=device)
         countModel['UNMUT']:dict = {}
-        countModel['UNMUT']['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-UCLL1_counts.pkl", map_location=device)
-        countModel['UNMUT']['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Lymph-UCLL2_counts.pkl", map_location=device)
+        countModel['UNMUT']['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Lymph-UCLL1_counts.pkl", map_location=device)
+        countModel['UNMUT']['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Lymph-UCLL2_counts.pkl", map_location=device)
     elif tumor == 'Panc-Endocrine':
         countModel:dict = {}
-        countModel['x1'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine1_counts.pkl", map_location=device)
-        countModel['x2'] = torch.load(f"/genomeGAN/trained_models/counts/Panc-Endocrine2_counts.pkl", map_location=device)
+        countModel['x1'] = torch.load(f"/oncoGAN/trained_models/counts/Panc-Endocrine1_counts.pkl", map_location=device)
+        countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Panc-Endocrine2_counts.pkl", map_location=device)
     elif tumor == "Prost-AdenoCA":
-        countModel = torch.load(f"/genomeGAN/trained_models/counts/Prost-AdenoCA_counts.pkl", map_location=device)
+        countModel = torch.load(f"/oncoGAN/trained_models/counts/Prost-AdenoCA_counts.pkl", map_location=device)
     
     # Mutations model
     if tumor == "Lymph-CLL":
         mutModel:dict = {}
-        mutModel['MUT'] = torch.load(f"/genomeGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
-        mutModel['UNMUT'] = torch.load(f"/genomeGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
+        mutModel['MUT'] = torch.load(f"/oncoGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
+        mutModel['UNMUT'] = torch.load(f"/oncoGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
     else:
-        mutModel = torch.load(f"/genomeGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
+        mutModel = torch.load(f"/oncoGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
 
     # Drivers model and files
     if tumor == "Lymph-CLL":
         driversModel:dict = {}
         driversModel['MUT']:dict = {}
-        driversModel['MUT']['model'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-MCLL_drivers.pkl", map_location=device)
-        driversModel['MUT']['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/Lymph-MCLL_driver_mutations.csv")
+        driversModel['MUT']['model'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_drivers.pkl", map_location=device)
+        driversModel['MUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_driver_mutations.csv")
         driversModel['UNMUT']:dict = {}
         driversModel['UNMUT']['model']:dict = {}
-        driversModel['UNMUT']['model']['x1'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL1_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['model']['x2'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL2_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['model']['x3'] = torch.load(f"/genomeGAN/trained_models/drivers/Lymph-UCLL3_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
+        driversModel['UNMUT']['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL1_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL2_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['model']['x3'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL3_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
     elif tumor == "Panc-Endocrine":
         driversModel:dict = {}
         driversModel['model']:dict = {}
-        driversModel['model']['x1'] = torch.load(f"/genomeGAN/trained_models/drivers/Panc-Endocrine1_drivers.pkl", map_location=device)
-        driversModel['model']['x2'] = torch.load(f"/genomeGAN/trained_models/drivers/Panc-Endocrine2_drivers.pkl", map_location=device)
-        driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+        driversModel['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine1_drivers.pkl", map_location=device)
+        driversModel['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine2_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
     else:
         driversModel:dict = {}
-        driversModel['model'] = torch.load(f"/genomeGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
-        driversModel['mutations'] = pd.read_csv(f"/genomeGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+        driversModel['model'] = torch.load(f"/oncoGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
 
     # Positions model
     if tumor == "Lymph-CLL":
         posModel:dict = {}
-        with open(f"/genomeGAN/trained_models/positions/Lymph-MCLL_positions.pkl", 'rb') as f:
+        with open(f"/oncoGAN/trained_models/positions/Lymph-MCLL_positions.pkl", 'rb') as f:
            posModel['MUT'] = pickle.load(f)
-        with open(f"/genomeGAN/trained_models/positions/Lymph-UCLL_positions.pkl", 'rb') as f:
+        with open(f"/oncoGAN/trained_models/positions/Lymph-UCLL_positions.pkl", 'rb') as f:
            posModel['UNMUT'] = pickle.load(f)
     else:
-        with open(f"/genomeGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
+        with open(f"/oncoGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
            posModel = pickle.load(f)
 
     # Counts corrections
-    countsCorr:pd.DataFrame = pd.read_csv(f"/genomeGAN/trained_models/counts/counts_correction_rates.csv")
+    countsCorr:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_correction_rates.csv")
 
     # Counts exclusions
-    countsEx:pd.DataFrame = pd.read_csv(f"/genomeGAN/trained_models/counts/counts_exclusions.csv")
+    countsEx:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_exclusions.csv")
 
     return(countModel, mutModel, posModel, driversModel, countsCorr, countsEx)
 
@@ -803,7 +804,7 @@ def simulate_vaf_rank(tumor, nCases) -> list:
     Function to simulate the VAF range for each donor
     """
 
-    rank_file:pd.DataFrame = pd.read_csv("/genomeGAN/trained_models/vaf_rank_list.tsv", sep='\t') 
+    rank_file:pd.DataFrame = pd.read_csv("/oncoGAN/trained_models/vaf_rank_list.tsv", sep='\t') 
     rank_file = rank_file.loc[rank_file["study"]==tumor]
     donor_vafs:list = random.choices(rank_file.columns[1:], weights=rank_file.values[0][1:], k=nCases)
 
@@ -1156,7 +1157,7 @@ def get_sexual_chrom_usage(tumor, gender) -> dict:
     Function to get the sexual chromosome usage
     """
 
-    sexChrFile:pd.DataFrame = pd.read_csv("/genomeGAN/trained_models/xy_ranks.txt", sep='\t') 
+    sexChrFile:pd.DataFrame = pd.read_csv("/oncoGAN/trained_models/xy_ranks.txt", sep='\t') 
     sexChrFile = sexChrFile.loc[sexChrFile["label"].isin([f'{tumor}_X{gender}', f'{tumor}_Y{gender}'])]
     sexChrFile['label'] = sexChrFile['label'].apply(lambda x:x[-2])
 
@@ -1367,7 +1368,7 @@ def simulate_mut_vafs(tumor, rank, n) -> list:
     A function to simulate the VAF of each mutation
     """
     
-    prop_vaf_file:pd.DataFrame = pd.read_csv(f"/genomeGAN/trained_models/vaf_annotation_by_study.tsv", sep='\t')
+    prop_vaf_file:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/vaf_annotation_by_study.tsv", sep='\t')
     prop_vaf_file = prop_vaf_file.loc[prop_vaf_file["study"]==tumor, ['vaf_range', rank]]
     mut_vafs:list = random.choices(list(prop_vaf_file['vaf_range']), weights=list(prop_vaf_file[rank]), k=n)
     mut_vafs = vaf_rank2float(mut_vafs)
@@ -1512,6 +1513,27 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
 
     return(vcf)
 
+def hg19tohg38(vcf) -> pd.DataFrame:
+
+    """
+    Convert hg19 coordinates to hg38
+    """
+
+    converter = ChainFile('/.liftover/hg19ToHg38.over.chain.gz')
+    for i,row in vcf.iterrows():
+        chrom:str = str(row['#CHROM'])
+        pos:int = int(row['POS'])
+        try:
+            liftOver_result:tuple = converter[chrom][pos][0]
+            vcf.loc[i, '#CHROM'] = liftOver_result[0]
+            vcf.loc[i, 'POS'] = liftOver_result[1]
+        except IndexError:
+            vcf.loc[i, '#CHROM'] = 'Remove'
+    
+    vcf = vcf[~vcf['#CHROM'].str.contains('Remove', na=False)]
+
+    return(vcf)
+
 @click.group()
 def cli():
     pass
@@ -1525,7 +1547,7 @@ def availTumors():
 
     tumors:list = [["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCa", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA"]]
     tumors:str = '\n'.join(['\t\t'.join(x) for x in tumors])
-    click.echo(f"\nThis is the list of available tumor types that can be simulated using genomeGAN:\n\n{tumors}\n")
+    click.echo(f"\nThis is the list of available tumor types that can be simulated using oncoGAN:\n\n{tumors}\n")
 
 @click.command(name="vcfGANerator")
 @click.option("-@", "--cpus",
@@ -1556,7 +1578,11 @@ def availTumors():
               default=os.getcwd(),
               show_default=False,
               help="Directory where save the simulations. Default is the current directory")
-def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
+@click.option("--hg38", "hg38",
+              is_flag=True,
+              required = False,
+              help="Transform the mutations to hg38")
+def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38):
 
     """
     Command to simulate mutations (VCF) for different tumor types using a GAN model
@@ -1622,7 +1648,13 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
 
         # Create the VCF output
-        vcf = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
+        vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
+
+        # Convert from hg19 to hg38
+        if hg38:
+            vcf = hg19tohg38(vcf)
+        else:
+            pass
 
         # Write the VCF
         output:str = out_path(outDir, prefix, tumor, idx+1)
@@ -1631,6 +1663,6 @@ def genomeGAN(cpus, tumor, nCases, refGenome, prefix, outDir):
         vcf.to_csv(output, sep="\t", index=False, mode="a")
 
 cli.add_command(availTumors)
-cli.add_command(genomeGAN)
+cli.add_command(oncoGAN)
 if __name__ == '__main__':
     cli()

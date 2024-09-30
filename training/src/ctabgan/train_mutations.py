@@ -2,7 +2,7 @@
 
 # Import model path
 import sys
-sys.path.append('/genomeGAN/ctabgan/')
+sys.path.append('/oncoGAN/ctabgan/')
 
 # Import modules
 import os

@@ -70,10 +70,9 @@ class EnsemblePredictor(nn.Module):
 
     def predict_proba(self, x):
         logits_list = self.model.forward(x)
-        probs_list = [F.softmax(logits, dim=1) for logits in logits_list]
-        probs_tensor = torch.stack(probs_list, dim=2)
+        probs_list = [F.softmax(logits, dim=0) for logits in logits_list]
+        probs_tensor = torch.stack(probs_list, dim=0)
         probability = probs_tensor.detach().cpu().numpy()
-        probability = np.asarray([p.mean(1) for p in probability])
 
         return probability
 
@@ -85,15 +84,13 @@ class EnsemblePredictor(nn.Module):
 
     def per_set_entropy(self, x):
         logits_list = self.model.forward(x)
-        probs_list = [F.softmax(logits, dim=1) for logits in logits_list]
-        probs_tensor = torch.stack(probs_list, dim=2)
-        probs = torch.mean(probs_tensor, dim=2)
+        probs_list = [F.softmax(logits, dim=0) for logits in logits_list]
+        probs_tensor = torch.stack(probs_list, dim=0)
 
         def entropy(prob_array, eps=1e-8):
-            return -np.sum(np.log(prob_array + eps) * prob_array, axis=0)
+            return -np.sum(np.log(prob_array + eps) * prob_array, axis=1)
 
-        probs = [x.detach().numpy() for x in probs]
-        entropy_list = [entropy(x) for x in probs]
+        entropy_list = entropy(probs_tensor.detach().numpy())
 
         return entropy_list
 
@@ -170,11 +167,11 @@ class MyDataset(Dataset):
               required=False,
               default=None,
               help="Directory with VCF files to analyze [Use --vcfFile or --vcfDir]")
-@click.option("--hg19", "refGenome",
+@click.option("--reference", "refGenome",
               type=click.Path(exists=True, file_okay=True),
               required = True,
               help="hg19 reference genome in fasta format")
-@click.option("--liftOver", "liftOver",
+@click.option("--hg38", "hg38",
               is_flag=True,
               required = False,
               help="Use this tag if your VCF is in hg38 coordinates")
@@ -187,7 +184,7 @@ class MyDataset(Dataset):
               default=os.getcwd(),
               show_default=False,
               help="Directory where save DeepTumour results. Default is the current directory")
-def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, keep_input, outDir):
+def DeepTumour(vcfFile, vcfDir, refGenome, hg38, keep_input, outDir):
     
     """
     Predict cancer type from a VCF file using DeepTumour
@@ -195,12 +192,12 @@ def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, keep_input, outDir):
 
     # Generate the DeepTumour input file from the VCFs
     if vcfFile and not vcfDir:
-        input:pd.DataFrame = vcf2input(vcfFile, refGenome, liftOver)
+        input:pd.DataFrame = vcf2input(vcfFile, refGenome, hg38)
     elif vcfDir and not vcfFile:
         input:pd.DataFrame = pd.DataFrame()
         for file in os.listdir(vcfDir):
             if file.endswith('.vcf'):
-                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, liftOver)])
+                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, hg38)])
     else:
         raise ValueError('Please provide either a VCF file or a directory with VCF files')
     
@@ -208,9 +205,9 @@ def DeepTumour(vcfFile, vcfDir, refGenome, liftOver, keep_input, outDir):
     if keep_input:
         input.to_csv(os.path.join(outDir, 'DeepTumour_preprocess_input.csv'), index=False)
     
-    # Load the models
+    # Load the model
     complete_ensemble = torch.load('/DeepTumour/trained_models/complete_ensemble.pt', map_location=torch.device("cpu"))
-    cancer_label:pd.Series = pd.read_csv('/DeepTumour/trained_models/rare_cancer_factors.csv')['Cancer']
+    cancer_label:pd.Series = pd.Series(["Biliary-AdenoCA","Bladder-TCC","Bone-Leiomyo","Bone-Osteosarc","Breast-AdenoCA","CNS-GBM","CNS-Medullo","CNS-Oligo","CNS-PiloAstro","Cervix-SCC","ColoRect-AdenoCA","Eso-AdenoCA","Head-SCC","Kidney-ChRCC","Kidney-RCC","Liver-HCC","Lung-AdenoCA","Lung-SCC","Lymph-BNHL","Lymph-CLL","Myeloid-MPN","Ovary-AdenoCA","Panc-AdenoCA","Panc-Endocrine","Prost-AdenoCA","Skin-Melanoma","Stomach-AdenoCA","Thy-AdenoCA","Uterus-AdenoCA"])
 
     # Separate labels and matrices
     labels:pd.Series = input['index']

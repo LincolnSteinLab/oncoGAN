@@ -7,15 +7,16 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 ## Copy DeepTumour requirements
-COPY requirements.txt torch-1.4.0+cpu-cp38-cp38-linux_x86_64.whl /DeepTumour/
+COPY requirements/* /tmp/
 ## Install DeepTumour venv
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir numpy==1.18.1 && \
-    pip install /DeepTumour/torch-1.4.0+cpu-cp38-cp38-linux_x86_64.whl && \
-    pip install --no-cache-dir -r /DeepTumour/requirements.txt && \
-    rm /DeepTumour/torch-1.4.0+cpu-cp38-cp38-linux_x86_64.whl /DeepTumour/requirements.txt
+    pip install --no-cache-dir numpy==1.21.0 && \
+    pip install /tmp/torch-1.9.1+cpu-cp38-cp38-linux_x86_64.whl && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    mkdir /.liftover && mv /tmp/hg38ToHg19.over.chain.gz /.liftover && \
+    rm /tmp/torch-1.9.1+cpu-cp38-cp38-linux_x86_64.whl /tmp/requirements.txt
 ## Copy DeepTumour scripts
-COPY *.py /DeepTumour/
+COPY src/* /DeepTumour/
 ## Update PATH
 ENV PATH=$PATH:/DeepTumour/
 ## Entrypoint
