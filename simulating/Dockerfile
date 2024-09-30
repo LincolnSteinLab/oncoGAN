@@ -6,18 +6,19 @@ RUN apt-get update && \
     apt-get autoremove -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-## Copy GAN requirements
-COPY requirements.txt torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl /genomeGAN/
-## Install GAN venv
+## Copy requirements
+COPY requirements/* /tmp/
+## Install venv
 RUN pip install --upgrade pip && \
-    pip install /genomeGAN/torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl && \
-    pip install --no-cache-dir -r /genomeGAN/requirements.txt && \
-    rm /genomeGAN/torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl /genomeGAN/requirements.txt
-## Copy GAN scripts
-COPY model /genomeGAN/model
-COPY *.py /genomeGAN/
+    pip install /tmp/torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    mkdir /.liftover && mv /tmp/hg19ToHg38.over.chain.gz /.liftover && \
+    rm /tmp/torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl /tmp/requirements.txt
+## Copy scripts
+COPY model /oncoGAN/model
+COPY src/* /oncoGAN/
 ## Update PATH
-ENV PATH=$PATH:/genomeGAN/
+ENV PATH=$PATH:/oncoGAN/
 ## Entrypoint
 WORKDIR /home
 ENTRYPOINT ["launcher.py"]

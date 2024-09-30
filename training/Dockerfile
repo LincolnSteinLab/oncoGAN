@@ -7,20 +7,20 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 ## Copy GAN requirements
-COPY requirements.txt /genomeGAN/
+COPY requirements.txt /tmp/
 ## Install GAN venv
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r /genomeGAN/requirements.txt && \
-    rm /genomeGAN/requirements.txt
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
 ## Copy GAN scripts
-COPY launcher.py /genomeGAN/launcher.py
-COPY ctabgan /genomeGAN/ctabgan
-COPY ctgan /genomeGAN/ctgan
+COPY src/launcher.py /oncoGAN/launcher.py
+COPY src/ctabgan /oncoGAN/ctabgan
+COPY src/ctgan /oncoGAN/ctgan
 ## Give extra permissions to run jupyter notebook
 RUN mkdir -p /.local/share/jupyter && chmod -R 777 /.local/share/jupyter
 ## Update environment variables
 ENV JUPYTER_ALLOW_INSECURE_WRITES=1
-ENV PATH=$PATH:/genomeGAN/
+ENV PATH=$PATH:/oncoGAN/
 ENV MPLCONFIGDIR=/tmp
 ## Entrypoint
 WORKDIR /home

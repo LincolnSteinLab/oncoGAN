@@ -42,11 +42,23 @@ from ctabgan.train_drivers import trainDrivers
 @click.option("--lr",
               type=click.Tuple([float, float, float]),
               help="A list with a learning rate range: start stop step")
+@click.option("--categorical_columns",
+              type=click.STRING,
+              default = None,
+              help="Categorical columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--log_columns",
+              type=click.STRING,
+              default = None,
+              help="Log columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--integer_columns",
+              type=click.STRING,
+              default = None,
+              help="Integer columns. Comma separated with no space (e.g. x,y,z)")
 @click.option("--debug",
               is_flag=True,
               flag_value=False,
               help="Greater verbosity for debugging purposes")
-def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, debug):
+def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, categorical_columns, log_columns, integer_columns, debug):
 
     """
     Test hyperparameters for counts/drivers CTABGAN models
@@ -56,7 +68,7 @@ def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, 
     options:list = []
     for iproduct in list(product(range(*epochs), range(*batch_size), [0.3], [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
         # options.append(tuple([csv, prefix, outdir]+list(iproduct)+[debug]))
-        options.append((csv, prefix, outdir, *iproduct, debug))
+        options.append((csv, prefix, outdir, *iproduct, categorical_columns, log_columns, integer_columns, debug))
     
     # Iterate hyperparameters
     click.echo(f"\n########## Testing {len(options)} hyperparameters combinations ##########\n")

@@ -2,7 +2,7 @@
 
 # Import model path
 import sys
-sys.path.append('/genomeGAN/ctabgan/')
+sys.path.append('/oncoGAN/ctabgan/')
 
 # Import modules
 import os
@@ -14,7 +14,7 @@ from torch import cuda, save
 
 cuda.empty_cache()
 
-def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable) -> None:
+def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, tqdm_disable) -> None:
 
     # Get training file information
     colnames:list = pd.read_csv(csv, nrows=1).columns.tolist()
@@ -24,11 +24,11 @@ def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_d
     ## Notice: If you have continuous variable, you do not need to explicitly assign it. It will be treated like that by default
     synthesizer = CTABGAN(raw_csv_path = csv,
                           test_ratio = test_ratio,
-                          categorical_columns = [],
-                          log_columns = [],
+                          categorical_columns = categorical_columns,
+                          log_columns = log_columns,
                           mixed_columns = {},
                           general_columns= [],
-                          integer_columns = [],
+                          integer_columns = integer_columns,
                           problem_type= {None: None},
                           epochs = epochs,
                           batch_size = batch_size,
@@ -89,18 +89,30 @@ def trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_d
               default=2e-4,
               show_default=True,
               help="Learning rate")
+@click.option("--categorical_columns",
+              type=click.STRING,
+              default = None,
+              help="Categorical columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--log_columns",
+              type=click.STRING,
+              default = None,
+              help="Log columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--integer_columns",
+              type=click.STRING,
+              default = None,
+              help="Integer columns. Comma separated with no space (e.g. x,y,z)")
 @click.option('--no-tqdm', 'tqdm_disable',
               is_flag=True,
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def trainDriversClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable):
+def trainDriversClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, tqdm_disable):
 
     """
     Train a drivers CTABGAN model
     """
 
-    trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, tqdm_disable)
+    trainDrivers(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, tqdm_disable)
 
 if __name__ == '__main__':
     trainDriversClick()

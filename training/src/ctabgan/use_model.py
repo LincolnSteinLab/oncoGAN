@@ -2,7 +2,7 @@
 
 # Import model path
 import sys
-sys.path.append('/genomeGAN/')
+sys.path.append('/oncoGAN/')
 
 # Import modules
 import os
@@ -15,7 +15,11 @@ import pandas as pd
 @click.option("--model",
               type=click.Path(exists=True, file_okay=True),
               required=True,
-              help="Model to use for the simulations (counts/drivers)")
+              help="Model to use for the simulations")
+@click.option("--feature",
+              type=click.Choice(['counts','drivers', 'artifacts', 'cna','sv'], case_sensitive=False),
+              required=True,
+              help="Feature to simulate")
 @click.option('--outdir',
               type=click.Path(exists=True, file_okay=False),
               default=os.getcwd(),
@@ -31,10 +35,10 @@ import pandas as pd
               default=1,
               show_default=True,
               help="Number of files to simulate")
-def useModel(model, outdir, nDonors, nFiles):
+def useModel(model, feature, outdir, nDonors, nFiles):
 
     """
-    Use a driver/count CTABGAN model to generate synthetic data
+    Use a CTABGAN model to generate synthetic data
     """
 
     # Open the model
@@ -44,7 +48,10 @@ def useModel(model, outdir, nDonors, nFiles):
     for i in range(nFiles):
         syn:pd.DataFrame = synthesizer.generate_samples(nDonors)
         modelName:str = os.path.basename(model).strip('.pkl')
-        syn.round(0).astype(int).to_csv(f"{outdir}/sim{i}_{modelName}.txt", sep="\t", index=False)
-    
+        if feature == "counts" or feature == "drivers":
+            syn.round(0).astype(int).to_csv(f"{outdir}/sim{i}_{modelName}.txt", sep="\t", index=False)
+        else:
+            syn.to_csv(f"{outdir}/sim{i}_{modelName}.txt", sep="\t", index=False)
+
 if __name__ == '__main__':
     useModel()
