@@ -1502,6 +1502,11 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
     vcf["MUT"][vcf["MUT"] == "SNP"] = vcf["SIGNATURE"][vcf["MUT"] == "SNP"]
     vcf.drop('SIGNATURE', axis=1, inplace=True)
 
+    # Update TNPs positions
+    tnps:pd.DataFrame = vcf[vcf["MUT"] == "TNP"]
+    if len(tnps.index) > 0:
+        vcf.loc[tnps.index, 'POS'] = tnps['POS'] - 1
+
     # Assign driver mutations to the VCF
     if drivers_counts.sum() > 0:
         vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID)
