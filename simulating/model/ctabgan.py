@@ -56,9 +56,21 @@ class CTABGAN():
         print('Finished training in', time.strftime("%H:%M:%S", time.gmtime(end_time-start_time)))
 
 
-    def generate_samples(self, n):
+    def generate_samples(self, n, var_column=None, var_class=None):
 
-        sample = self.synthesizer.sample(n) 
+        if var_class != None:
+            # Class index
+            var_label_names = [var['column'] for var in self.data_prep.label_encoder_list]
+            var_label_index = var_label_names.index(var_column)
+            le = self.data_prep.label_encoder_list[var_label_index]['label_encoder']
+            var_class_index = list(le.classes_).index(var_class)
+            # Column index
+            var_column_index = self.data_prep.df.columns.get_loc(var_column)
+        else:
+            var_column_index = None
+            var_class_index = None
+        
+        sample = self.synthesizer.sample(n, var_column_index, var_class_index)
         sample_df = self.data_prep.inverse_prep(sample)
         
         return sample_df
