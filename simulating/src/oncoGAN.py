@@ -12,6 +12,8 @@ import random
 import pandas as pd
 import numpy as np
 import multiprocessing
+import matplotlib.pyplot as plt
+import seaborn as sns
 from liftover import ChainFile
 from tqdm import tqdm
 from pyfaidx import Fasta
@@ -107,6 +109,20 @@ def tumor_models(tumor, device) -> list:
     countsEx:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_exclusions.csv")
 
     return(countModel, mutModel, posModel, driversModel, countsCorr, countsEx)
+
+def cna_sv_models(device) -> list:
+
+    """
+    Get the CNA and SV models
+    """
+    
+    cna_sv_countModel = torch.load("/oncoGAN/trained_models/cna_sv/counts/CNA_SV_counts.pkl", map_location=device)
+    cnaModel = torch.load("/oncoGAN/trained_models/cna_sv/cna/CNA_model.pkl", map_location=device)
+    with open("/oncoGAN/trained_models/cna_sv/sv_positions/SV_positions.pkl", 'rb') as f:
+        sv_posModel = pickle.load(f)
+    svModel = torch.load("/oncoGAN/trained_models/cna_sv/sv/SV_model.pkl", map_location=device)
+
+    return(cna_sv_countModel, cnaModel, sv_posModel, svModel)
 
 def out_path(outDir, prefix, tumor, n) -> click.Path:
 
@@ -1109,27 +1125,39 @@ def gender_selection(tumor) -> str:
     
     return(gender)
 
-def assign_chromosome(positions) -> pd.DataFrame:
+def assign_chromosome(positions, cna=False, gender=None) -> pd.DataFrame:
     
     """
     Function to assign a chromosome to each position
     """
     
     # Positions are encoded in a continuous scale, so we need to decode them
-    position_decode:np.array  = np.array([0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846])
-    chromosome_decode:np.array  = np.array(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y'])
-    start_encoded:np.array  = np.digitize(positions["start"], position_decode, right=True)
-    end_encoded:np.array  = np.digitize(positions["end"], position_decode, right=True)
-    ## Assign new columns
-    positions["start"] = positions["start"] - np.take(position_decode, start_encoded-1)
-    positions["end"] = positions["end"] - np.take(position_decode, end_encoded-1)
-    positions["start_chrom"] = np.take(chromosome_decode, start_encoded-1)
-    positions["end_chrom"] = np.take(chromosome_decode, end_encoded-1)
-    
-    # Because the scale is continuous, some positions might be assigned to the next chromosome
-    positions = positions[positions['start_chrom'] == positions['end_chrom']]
-    positions.drop('end_chrom', axis=1, inplace=True)
-    positions.rename(columns={'start_chrom':'chrom'}, inplace=True)
+    if cna and gender == 'F':
+        position_decode:np.array  = np.array([0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286])
+        chromosome_decode:np.array  = np.array(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X'])
+    else:
+        position_decode:np.array  = np.array([0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846])
+        chromosome_decode:np.array  = np.array(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y'])
+
+    if not cna:
+        start_encoded:np.array  = np.digitize(positions["start"], position_decode, right=True)
+        end_encoded:np.array  = np.digitize(positions["end"], position_decode, right=True)
+        ## Assign new columns
+        positions["start"] = positions["start"] - np.take(position_decode, start_encoded-1)
+        positions["end"] = positions["end"] - np.take(position_decode, end_encoded-1)
+        positions["start_chrom"] = np.take(chromosome_decode, start_encoded-1)
+        positions["end_chrom"] = np.take(chromosome_decode, end_encoded-1)
+        
+        # Because the scale is continuous, some positions might be assigned to the next chromosome
+        positions = positions[positions['start_chrom'] == positions['end_chrom']]
+        positions.drop('end_chrom', axis=1, inplace=True)
+        positions.rename(columns={'start_chrom':'chrom'}, inplace=True)
+    else:
+        positions['pos'] = positions['len'].cumsum()
+        pos_encoded:np.array  = np.digitize(positions["pos"], position_decode, right=True)
+        ## Assign new columns
+        positions["pos"] = positions["pos"] - np.take(position_decode, pos_encoded-1)
+        positions["chrom"] = np.take(chromosome_decode, pos_encoded-1)
 
     return(positions)
 
@@ -1534,6 +1562,335 @@ def hg19tohg38(vcf) -> pd.DataFrame:
 
     return(vcf)
 
+def select_cna_sv_counts(cna_sv_countModel, nCases, tumor, counts) -> pd.DataFrame:
+
+    """
+    Generate CNA and SV for each donor
+    """
+
+    # Calculate the total mutations per donor
+    counts_totalmut:pd.Series = counts.sum(axis=1)
+
+    # Generate CNA and SV samples
+    cna_sv_counts:pd.DataFrame = cna_sv_countModel.generate_samples(nCases*100, var_column='study', var_class=tumor)
+    
+    # Select CNA-SV events for each donor based on the total number of mutations as link between the two models
+    selected_cna_sv_counts:pd.DataFrame = pd.DataFrame()
+    for count in counts_totalmut:
+        ## Find the index of the closest 'total_mut' in cna_sv_counts
+        cna_sv_index:int = (np.abs(cna_sv_counts['total_mut'] - count)).argmin()
+        ## Select the best case
+        tmp:pd.DataFrame = cna_sv_counts.iloc[[cna_sv_index],:]
+        selected_cna_sv_counts = pd.concat([selected_cna_sv_counts, tmp], ignore_index=True)
+        ## Drop the selected row to avoid duplicate selections
+        cna_sv_counts = cna_sv_counts.drop(index=cna_sv_index).reset_index(drop=True)
+
+    return(selected_cna_sv_counts)
+
+def select_cnas(cnas_df, nCNAs, lenCNA, iterations=100000) -> list:
+    
+    """
+    Select a subset of CNAs such that the sum of the subset is as close as possible to the generated length.
+    """
+    
+    best_sum_difference:float = float('inf')
+    for _ in range(iterations):
+        subset:pd.DataFrame = cnas_df.sample(nCNAs)
+        subset_sum = subset['len'].sum()
+        
+        # Check if the current subset's sum is closer to the generated lenght
+        if abs(subset_sum - lenCNA) < best_sum_difference:
+            best_sum_difference = abs(subset_sum - lenCNA)
+            best_subset = subset
+        
+        # Early exit if we reach a close subset
+        if best_sum_difference < 0.1*lenCNA:
+            break
+    
+    return(best_subset, int(np.sum(best_subset['len'])))
+
+def sort_by_int_chrom(chrom) -> pd.DataFrame:
+    
+    """
+    Sort a dataframe using integer chromosomes
+    """
+
+    if chrom == 'X':
+        return 23
+    if chrom == 'Y':
+        return 24
+    else:
+        return int(chrom)
+
+def rescue_missing_chroms(cnas_df, gender, keys, chrom_size_dict) -> pd.DataFrame:
+
+    """
+    A function to recover missing chromsomes for CNA
+    """
+
+    # Detect missing chromosomes
+    all_chroms:set = set(cnas_df['chrom'].astype(str))
+    simulated_chroms:list = [str(chrom) for chrom in keys if str(chrom) in all_chroms]
+    missing_chroms:list = [str(chrom) for chrom in keys if str(chrom) not in all_chroms]
+
+    if gender == 'F' and 'Y' in missing_chroms:
+        missing_chroms.remove('Y')
+
+    # Select the next available chromsome as template
+    for missing_chrom in missing_chroms:
+        if missing_chrom != 'Y':
+            i:int = 1
+            next_chrom:str = missing_chrom
+            while next_chrom in missing_chroms:
+                next_chrom = keys[keys.index(missing_chrom)+i]
+                i += 1
+        else:
+            next_chrom:str = random.choice(simulated_chroms)
+        next_chrom_row:pd.DataFrame = pd.DataFrame([cnas_df[cnas_df['chrom'] == next_chrom].iloc[0].copy()])
+        next_chrom_row['chrom'] = missing_chrom
+        next_chrom_row['pos'] = int(chrom_size_dict[missing_chrom])
+        cnas_df = pd.concat([cnas_df, next_chrom_row], ignore_index=True)
+    cnas_df = cnas_df.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
+
+    return(cnas_df)
+
+def adjust_cna_position(cnas_df, gender) -> pd.DataFrame:
+
+    """
+    Adjust the lengths of the CNAs to fit the assigned chromosomes positions
+    """
+
+    keys:list = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y']
+    values:list = [249250621,243199373,198022430,191154276,180915260,171115067,159138663,146364022,141213431,135534747,135006516,133851895,115169878,107349540,102531392,90354753,81195210,78077248,59128983,63025520,48129895,51304566,155270560,59373566]
+    chrom_size_dict:dict = dict(zip(keys, values))
+
+    # Add missing chromsomes
+    cnas_df = rescue_missing_chroms(cnas_df, gender, keys, chrom_size_dict)
+    
+    # Get the maximum position for each chrom
+    grouped:pd.DataFrame = cnas_df.groupby('chrom')['pos'].max().reset_index()
+    grouped.columns = ['chrom', 'max_pos']
+    
+    adjusted_cnas_df:pd.DataFrame = pd.DataFrame()
+    for chrom, max_pos in grouped.itertuples(index=False):
+        real_chrom_length:int = chrom_size_dict[chrom]
+        ratio:float = real_chrom_length / max_pos
+        
+        # Adjust 'pos' for each chrom group and set max 'pos' value to real chrom length
+        tmp_df:pd.DataFrame = cnas_df[cnas_df['chrom'] == chrom].copy()
+        tmp_df['pos'] = (tmp_df['pos'] * ratio).round().astype(int)
+        tmp_df['pos'][-1] = real_chrom_length
+        adjusted_cnas_df = pd.concat([adjusted_cnas_df, tmp_df], ignore_index=True)
+    
+    adjusted_cnas_df = adjusted_cnas_df.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
+
+    # Set the first start position of each chromsome as 1
+    adjusted_cnas_df['start'] = adjusted_cnas_df.groupby('chrom')['pos'].transform(lambda x: np.insert(x.values + 1, 0, 1)[:-1])
+    adjusted_cnas_df = adjusted_cnas_df.rename(columns={"pos": "end"})
+
+    return(adjusted_cnas_df)
+
+def combine_same_cna_events(cnas_df) -> pd.DataFrame:
+    
+    """
+    Combines consecutive cnas with the same 'major_cn' and 'minor_cn' events
+    """
+
+    # Group by unique clusters of consecutive rows with the same chrom, major_cn, and minor_cn
+    combined_df:pd.DataFrame = (
+        cnas_df.groupby((cnas_df[['chrom', 'major_cn', 'minor_cn', 'donor_id', 'study']].shift() != cnas_df[['chrom', 'major_cn', 'minor_cn', 'donor_id', 'study']]).any(axis=1).cumsum())
+          .agg(
+              chrom=('chrom', 'first'),
+              start=('start', 'min'),
+              end=('end', 'max'),
+              major_cn=('major_cn', 'first'),
+              minor_cn=('minor_cn', 'first'),
+              donor_id=('donor_id', 'first'),
+              study=('study', 'first')
+          )
+          .reset_index(drop=True)
+    )
+    
+    return(combined_df)
+
+def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx) -> pd.DataFrame:
+    
+    """
+    Generate CNAs
+    """
+
+    max_length:int = 3036303846 if gender == "F" else 3095677412 if gender == "M" else None
+    case_cnas:pd.DataFrame = cnaModel.generate_samples(nCNAs*100, var_column='study', var_class=tumor)
+
+    # Update CNAs length
+    lenCNA = round(np.exp(lenCNA))
+    lenCNA_normal:int = max_length-lenCNA
+    case_cnas['len'] = round(np.exp(case_cnas['len'])*10000)
+
+    # Process altered haplotypes
+    case_cnas_altered:pd.DataFrame = case_cnas[(case_cnas['major_cn'] != 1) | (case_cnas['minor_cn'] != 1)]
+    selected_case_cnas_altered, selected_lenCNA = select_cnas(case_cnas_altered, nCNAs, lenCNA)
+    len_adjust_ratio:float = lenCNA/selected_lenCNA
+    selected_case_cnas_altered['len'] = round(selected_case_cnas_altered['len']*len_adjust_ratio).astype(int)
+
+    # Process normal haplotypes
+    case_cnas_normal:pd.DataFrame = case_cnas[(case_cnas['major_cn'] == 1) & (case_cnas['minor_cn'] == 1)]
+    case_cnas_normal['cumsum'] = case_cnas_normal['len'].cumsum()
+    selected_case_cnas_normal = case_cnas_normal[case_cnas_normal['cumsum'] <= lenCNA_normal]
+    len_adjust_ratio_normal:float = lenCNA_normal/np.sum(selected_case_cnas_normal['len'])
+    selected_case_cnas_normal['len'] = round(selected_case_cnas_normal['len']*len_adjust_ratio_normal).astype(int)
+    selected_case_cnas_normal = selected_case_cnas_normal.drop(columns=['cumsum'])
+
+    # Merge and shuffle CNAs
+    case_cnas = pd.concat([selected_case_cnas_altered, selected_case_cnas_normal])
+    case_cnas = case_cnas.sample(frac=1, replace=False, random_state=1).reset_index(drop=True)
+    
+    # Assign chromosomes and adjust CNAs by chromosome
+    case_cnas = assign_chromosome(case_cnas, cna=True, gender=gender)
+    case_cnas = adjust_cna_position(case_cnas, gender)
+    
+    # Add donor id
+    case_cnas["donor_id"] = f"sim{idx}"
+    case_cnas = case_cnas[["chrom", "start", "end", "major_cn", "minor_cn", "donor_id", "study"]]
+
+    # Combine same CNAs events
+    case_cnas = combine_same_cna_events(case_cnas)
+
+    # Sort by real integer chrom order
+    case_cnas = case_cnas.sort_values(by=['chrom', 'start'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
+
+    return(case_cnas)
+
+def assign_cna_plot_color(y) -> str:
+
+    """
+    Asign a color to CNA segements depending on the copy number
+    """
+    
+    if y == 1:
+        return "Normal"
+    elif y > 1:
+        return "Gain"
+    else:
+        return "Loss"
+    
+def plot_cnas(cna_profile, output, idx) -> None:
+
+    """
+    Plot CNA segments
+    """
+
+    # Change chrom format to str
+    cna_profile['chrom'] = cna_profile['chrom'].astype(str)
+
+    # Define chromosome lengths
+    chrom_list:list = list(range(1, 23)) + ["X", "Y"]
+    cumlength_list:list = [0, 249250621, 492449994, 690472424, 881626700, 1062541960, 1233657027, 1392795690, 1539159712, 1680373143, 1815907890, 1950914406, 2084766301, 2199936179, 2307285719, 2409817111, 2500171864, 2581367074, 2659444322, 2718573305, 2781598825, 2829728720, 2881033286, 3036303846]
+    cumlength_end_list:list = [249250621, 492449994, 690472424, 881626700, 1062541960, 1233657027, 1392795690, 1539159712, 1680373143, 1815907890, 1950914406, 2084766301, 2199936179, 2307285719, 2409817111, 2500171864, 2581367074, 2659444322, 2718573305, 2781598825, 2829728720, 2881033286, 3036303846, 3095677412]
+    chrom_size_list:list = [end - start for start, end in zip(cumlength_list, cumlength_end_list)]
+    chrom_cumsum_length:pd.DataFrame = pd.DataFrame({
+        'chrom': [str(chr) for chr in chrom_list],
+        'cumlength': cumlength_list,
+        'cumlength_end': cumlength_end_list,
+        'chrom_size': chrom_size_list
+    })
+
+    if 'Y' not in set(cna_profile['chrom']):
+        chrom_cumsum_length = chrom_cumsum_length.iloc[:-1]
+
+    # Preprocess the data
+    ## Left join CNAs with chromosome lengths
+    cna_profile = cna_profile.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
+    ## Update segment positions
+    cna_profile['start'] = cna_profile['start'] + cna_profile['cumlength']
+    cna_profile['end'] = cna_profile['end'] + cna_profile['cumlength']
+    ## Remove unnecesary columns
+    cna_profile = cna_profile.drop(columns=['cumlength'])
+    ## Add a group column, one for each segment
+    cna_profile['group'] = np.arange(1, len(cna_profile) + 1)
+    ## Calculate linewidth
+    cna_profile['linewidth'] = np.where(cna_profile['major_cn'] == cna_profile['minor_cn'], 5, 3)
+    ## Pivot longer 'start' and 'end' columns
+    id_vars:list = [col for col in cna_profile.columns if col not in ['start', 'end']]
+    cna_profile_long:pd.DataFrame = cna_profile.melt(
+        id_vars=id_vars,
+        value_vars=['start', 'end'],
+        var_name='position',
+        value_name='x'
+    )
+    cna_profile_long = cna_profile_long.sort_values('group').reset_index(drop=True)
+    ## Pivot longer 'major_cn' and 'minor_cn' columns
+    id_vars:list = [col for col in cna_profile_long.columns if col not in ['major_cn', 'minor_cn']]
+    cna_profile_long = cna_profile_long.melt(
+        id_vars=id_vars,
+        value_vars=['major_cn', 'minor_cn'],
+        var_name='cn',
+        value_name='y'
+    )
+
+    # Plot
+    ## Assign colors
+    cna_profile_long['color'] = cna_profile_long['y'].apply(assign_cna_plot_color)
+    cna_profile_long['color'] = pd.Categorical(
+        cna_profile_long['color'],
+        categories=['Gain', 'Normal', 'Loss'],
+        ordered=True
+    )
+    color_mapping:dict = {'Gain': "#2a9d8f", 'Normal': "#264653", 'Loss': "#f4a261"}
+    ## Create a figure and axis object
+    plt.figure(figsize=(16, 8))
+    ## Plot the segments
+    for (grp, cn), data in cna_profile_long.groupby(['group', 'cn']):
+        plt.plot(
+            data['x'], 
+            data['y'], 
+            color=color_mapping[data['color'].iloc[0]], 
+            linewidth=data['linewidth'].iloc[0],
+            label='_nolegend_',
+            solid_capstyle='butt'
+        )
+    ## Separate chroms by vertical dashed lines
+    chrom_vlines:pd.DataFrame = chrom_cumsum_length.iloc[:-1]
+    for x in chrom_vlines['cumlength_end']:
+        plt.axvline(x=x, color='gray', linewidth=0.2, linestyle='--')
+    ## Calculate ymax for setting y-axis limits and label positions
+    ymax:int = cna_profile_long['y'].max()
+    plt.ylim(-0.5, ymax + 1)
+    plt.yticks(range(0,ymax+1))
+    ## Calculate chromosome label positions
+    ### X
+    chrom_cumsum_length['x_label_pos'] = chrom_cumsum_length['cumlength'] + chrom_cumsum_length['chrom_size'] / 2
+    ### Y
+    num_labels:int = len(chrom_cumsum_length)
+    y_positions:list = [ymax + 0.6 if i % 2 == 0 else ymax + 0.4 for i in range(num_labels - 1)]
+    y_positions.append(ymax + 0.6)  # Add the last position
+    chrom_cumsum_length['y_label_pos'] = y_positions
+    ## Add chromosome labels
+    for _, row in chrom_cumsum_length.iterrows():
+        plt.text(
+            row['x_label_pos'], 
+            row['y_label_pos'], 
+            str(row['chrom']), 
+            ha='center', 
+            va='bottom', 
+            fontsize=11
+        )
+    ## Minimal style
+    sns.set_style("whitegrid", {'axes.grid': False})
+    sns.despine(trim=True, left=False, bottom=False)
+    ## Set axis labels and subtitle
+    ax = plt.gca()
+    plt.title(f'Breast-AdenoCa - Donor{idx}', fontsize=17)
+    plt.xlabel('Genome', fontsize=14)
+    plt.tick_params(axis='x', which='both', length=0, labelbottom=False)
+    plt.ylabel('CNA', fontsize=14)
+    plt.tick_params(axis='y', which='both', length=5)
+    loc, label = plt.yticks()
+    ax.yaxis.set_label_coords(-0.02, np.mean(loc), transform=ax.get_yaxis_transform())
+
+    # Save the plot
+    plt.savefig(output)
+
 @click.group()
 def cli():
     pass
@@ -1568,7 +1925,7 @@ def availTumors():
               help="Number of cases to simulate")
 @click.option("-r", "--refGenome", "refGenome",
               type=click.Path(exists=True, file_okay=True),
-              required = True,
+              required=True,
               help="hg19 reference genome in fasta format")
 @click.option("--prefix",
               type=click.STRING,
@@ -1580,9 +1937,29 @@ def availTumors():
               help="Directory where save the simulations. Default is the current directory")
 @click.option("--hg38", "hg38",
               is_flag=True,
-              required = False,
+              required=False,
               help="Transform the mutations to hg38")
-def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38):
+@click.option("--mut/--no-mut", "simulateMuts",
+              is_flag=True,
+              required=False,
+              default=True,
+              help="Simulate mutations")
+@click.option("--CNA/--no-CNA", "simulateCNA",
+              is_flag=True,
+              required=False,
+              default=True,
+              help="Simulate CNA events")
+@click.option("--SV/--no-SV", "simulateSV",
+              is_flag=True,
+              required=False,
+              default=True,
+              help="Simulate SV events")
+@click.option("--plots/--no-plots", "savePlots",
+              is_flag=True,
+              required = False,
+              default=True,
+              help="Save plots")
+def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA, simulateSV, savePlots):
 
     """
     Command to simulate mutations (VCF) for different tumor types using a GAN model
@@ -1595,8 +1972,9 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38):
     # Torch options
     device:str = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Get models
+    # Load models
     countModel, mutModel, posModel, driversModel, countCorr, countEx = tumor_models(tumor, device)
+    cna_sv_countModel, cnaModel, sv_posModel, svModel = cna_sv_models(device)
 
     # Load reference genome
     fasta = Fasta(refGenome)
@@ -1607,13 +1985,19 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38):
     # Annotate VAF rank to each donor
     donors_vafRank:list = simulate_vaf_rank(tumor, nCases)
 
+    # Generate CNA and SV counts for each case
+    cna_sv_counts:pd.DataFrame = select_cna_sv_counts(cna_sv_countModel, nCases, tumor, counts)
+
     # Simulate one donor at a time
     muts:pd.DataFrame = pd.DataFrame()
     for idx in tqdm(range(nCases), desc = "Donors"):
+        output:str = out_path(outDir, prefix, tumor, idx+1)
+        
         # Focus in one case
         case_counts:pd.Series = counts.iloc[idx]
         nMut:int = int(case_counts.sum())
         case_rank:str = donors_vafRank[idx]
+        case_cna_sv:pd.Series = cna_sv_counts.iloc[idx]
 
         # Detect specific tumor type in case we are simulating Lymph-CLL
         if tumor == 'Lymph-CLL':
@@ -1621,46 +2005,59 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38):
         else:
             drivers_tumor:str = tumor
 
-        # Simulate driver mutations to each donor
-        case_drivers:pd.Series = simulate_drivers(drivers_tumor, driversModel)
-
         # Gender selection
         gender:str = gender_selection(tumor)
 
-        # Generate the mutations
-        muts, case_muts = simulate_mutations(mutModel, muts, nMut, case_counts, drivers_tumor)
-        
-        # Select the mutations corresponding for this case
-        muts, case_muts = select_case_mutations(muts, case_counts)
+        if simulateMuts:
+            # Simulate driver mutations to each donor
+            case_drivers:pd.Series = simulate_drivers(drivers_tumor, driversModel)
 
-        # Reduce muts size over rounds
-        if muts.shape[0] > 1e7:
-            muts = pd.DataFrame()
-        else:
-            muts = muts.sample(frac=0.5).reset_index(drop=True)
 
-        # Generate the chromosome and position of the mutations
-        case_muts = assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender, cpus)
+            # Generate the mutations
+            muts, case_muts = simulate_mutations(mutModel, muts, nMut, case_counts, drivers_tumor)
+            
+            # Select the mutations corresponding for this case
+            muts, case_muts = select_case_mutations(muts, case_counts)
 
-        # Generate and assign the VAF to the mutations
-        mut_vafs:list = simulate_mut_vafs(tumor, case_rank, nMut) #TODO - Adjust VAF for sexual mutations
-        case_muts['vaf'] = mut_vafs
-        drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
+            # Reduce muts size over rounds
+            if muts.shape[0] > 1e7:
+                muts = pd.DataFrame()
+            else:
+                muts = muts.sample(frac=0.5).reset_index(drop=True)
 
-        # Create the VCF output
-        vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
+            # Generate the chromosome and position of the mutations
+            case_muts = assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender, cpus)
 
-        # Convert from hg19 to hg38
-        if hg38:
-            vcf = hg19tohg38(vcf)
-        else:
+            # Generate and assign the VAF to the mutations
+            mut_vafs:list = simulate_mut_vafs(tumor, case_rank, nMut) #TODO - Adjust VAF for sexual mutations
+            case_muts['vaf'] = mut_vafs
+            drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
+
+            # Create the VCF output
+            vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
+
+            # Convert from hg19 to hg38
+            if hg38:
+                vcf = hg19tohg38(vcf)
+            else:
+                pass
+
+            # Write the VCF
+            with open(output, "w+") as out:
+                out.write("##fileformat=VCFv4.2\n")
+            vcf.to_csv(output, sep="\t", index=False, mode="a")
+
+        if simulateCNA:
+            # Simulate CNAs
+            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx+1)
+            case_cna.to_csv(output.replace(".vcf", "_cna.csv"), index=False)
+            if savePlots:
+                plot_cnas(case_cna, output.replace(".vcf", "_cna.png"), idx+1)
+
+        if simulateSV:
+            # Simulate SVs
+            # sv:pd.DataFrame = simulate_cnas(tumor, svModel)
             pass
-
-        # Write the VCF
-        output:str = out_path(outDir, prefix, tumor, idx+1)
-        with open(output, "w+") as out:
-            out.write("##fileformat=VCFv4.2\n")
-        vcf.to_csv(output, sep="\t", index=False, mode="a")
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
