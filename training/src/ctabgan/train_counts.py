@@ -129,7 +129,7 @@ def trainCountsClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, ca
     Train a counts CTABGAN model
     """
 
-    trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns,tqdm_disable)
+    trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns,tqdm_disable)
 
 if __name__ == '__main__':
     trainCountsClick()

@@ -39,6 +39,10 @@ from ctabgan.train_drivers import trainDrivers
 @click.option("--batch_size",
               type=click.Tuple([int, int, int]),
               help="A list with a batch_size range: start stop step")
+@click.option("--test_ratio",
+              type=click.FLOAT,
+              default=0.3,
+              help="Test ratio")
 @click.option("--lr",
               type=click.Tuple([float, float, float]),
               help="A list with a learning rate range: start stop step")
@@ -54,6 +58,10 @@ from ctabgan.train_drivers import trainDrivers
               type=click.STRING,
               default = None,
               help="Integer columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--mixed_columns",
+              type=click.STRING,
+              default = None,
+              help="mixed columns. Dictionary string with the variable name as the key and integer values that should be considered categorical in a list format (e.g. \"{'len': [0]}\")")
 @click.option("--general_columns",
               type=click.STRING,
               default = None,
@@ -63,11 +71,7 @@ from ctabgan.train_drivers import trainDrivers
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-@click.option("--debug",
-              is_flag=True,
-              flag_value=False,
-              help="Greater verbosity for debugging purposes")
-def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, categorical_columns, log_columns, integer_columns, general_columns, tqdm_disable, debug):
+def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
 
     """
     Test hyperparameters for counts/drivers CTABGAN models
@@ -75,8 +79,8 @@ def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, 
 
     # Create the list of options
     options:list = []
-    for iproduct in list(product(range(*epochs), range(*batch_size), [0.3], [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
-        options.append((csv, prefix, outdir, *iproduct, categorical_columns, log_columns, integer_columns, general_columns, tqdm_disable, debug))
+    for iproduct in list(product(range(*epochs), range(*batch_size), [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
+        options.append((csv, prefix, outdir, *iproduct, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable))
     
     # Iterate hyperparameters
     click.echo(f"\n########## Testing {len(options)} hyperparameters combinations ##########\n")
