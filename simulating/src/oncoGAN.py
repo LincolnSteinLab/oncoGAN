@@ -993,10 +993,10 @@ def filter_muts(file) -> pd.DataFrame:
     # Annotate the type of mutation
     conditions:list = [
         ((file['a.ctx1'] == file['r.ctx1']) & (file['a.ctx2'] != file['r.ctx2']) & (file['a.ctx3'] == file['r.ctx3']) & (file['a.ctx2'] != '.') & (file['signature'] != '.')),
-        ((file['a.ctx1'] == file['r.ctx1']) & (file['a.ctx2'] != file['r.ctx2']) & (file['a.ctx3'] != file['r.ctx3']) & (file['a.ctx2'] != '.') & (file['a.ctx3'] != '.') & (file['signature'] == '.')),
-        ((file['a.ctx1'] != file['r.ctx1']) & (file['a.ctx2'] != file['r.ctx2']) & (file['a.ctx3'] != file['r.ctx3']) & (file['a.ctx1'] != '.') & (file['a.ctx2'] != '.') & (file['a.ctx3'] != '.') & (file['signature'] == '.')),
-        ((file['a.ctx1'] == '.') & (file['a.ctx2'] == '.') & (file['a.ctx3'] == '.') & (file['len'] > 0) & (file['signature'] == '.')),
-        ((file['a.ctx1'] == '.') & (file['a.ctx2'] == '.') & (file['a.ctx3'] == '.') & (file['len'] < 0) & (file['signature'] == '.'))
+        ((file['a.ctx1'] == file['r.ctx1']) & (file['a.ctx2'] != file['r.ctx2']) & (file['a.ctx3'] != file['r.ctx3']) & (file['a.ctx2'] != '.') & (file['a.ctx3'] != '.') & (file['signature'] == 'DNP')),
+        ((file['a.ctx1'] != file['r.ctx1']) & (file['a.ctx2'] != file['r.ctx2']) & (file['a.ctx3'] != file['r.ctx3']) & (file['a.ctx1'] != '.') & (file['a.ctx2'] != '.') & (file['a.ctx3'] != '.') & (file['signature'] == 'TNP')),
+        ((file['a.ctx1'] == '.') & (file['a.ctx2'] == '.') & (file['a.ctx3'] == '.') & (file['len'] > 0) & (file['signature'] == 'INS')),
+        ((file['a.ctx1'] == '.') & (file['a.ctx2'] == '.') & (file['a.ctx3'] == '.') & (file['len'] < 0) & (file['signature'] == 'DEL'))
     ]
     mutations:list = ['SNP', 'DNP', 'TNP', 'INS', 'DEL']
     file['mut'] = np.select(conditions, mutations, default='Error')
@@ -1035,81 +1035,27 @@ def manually_simulate_dnp_tnp(mutSynthesizer, nMut, mut_type, tumor) -> pd.DataF
     
         return(muts)
 
-def simulate_mutations(mutSynthesizer, muts, nMut, case_counts, tumor) -> pd.DataFrame:
+def simulate_mutations(mutSynthesizer, case_counts) -> pd.DataFrame:
 
     """
     Function to easily generate all the mutations for a case
     """
 
-    # Initialize the variables
-    generated_types:pd.Series = pd.Series()
-    oriVSsim_types:pd.Series = pd.Series()
-    first:bool = True
-    rounds:int = 0
-
-    # Enter in a loop until the number of mutations generated is the same as the number of mutations that have to be generated
-    while (not all(oriVSsim_types==0)) or first:
-        first = False
-        ## Generate and filter the mutations
-        if tumor == "Lymph-MCLL":
-            tmp_muts:pd.DataFrame = mutSynthesizer['MUT'].generate_samples(int(round(nMut*30,0)))
-        elif tumor == "Lymph-UCLL":
-            tmp_muts:pd.DataFrame = mutSynthesizer['UNMUT'].generate_samples(int(round(nMut*30,0)))
-        else:    
-            tmp_muts:pd.DataFrame = mutSynthesizer.generate_samples(int(round(nMut*30,0)))
-        tmp_muts = filter_muts(tmp_muts)
-        muts = pd.concat([muts,tmp_muts])
-        ## Check the number and type of the generated mutations
-        tmp_generated_types = tmp_muts.apply(lambda x:x['mut'] if x['signature'] == '.' else x['signature'], axis=1).value_counts()
-        tmp_generated_types, generated_types = tmp_generated_types.align(generated_types, fill_value=0)
-        generated_types += tmp_generated_types
-        case_counts, generated_types = case_counts.align(generated_types, fill_value=0)
-        oriVSsim_types = case_counts - generated_types
-        oriVSsim_types[oriVSsim_types < 0] = 0
-        ## Break the loop if it is taking too long
-        if rounds == 20:
-            if oriVSsim_types['DNP'] > 0:
-                dnp_muts = manually_simulate_dnp_tnp(mutSynthesizer, oriVSsim_types['DNP'], 'DNP', tumor)
-                muts = pd.concat([muts,dnp_muts])
-                oriVSsim_types['DNP'] = 0
-            if oriVSsim_types['TNP'] > 0:
-                tnp_muts = manually_simulate_dnp_tnp(mutSynthesizer, oriVSsim_types['TNP'], 'TNP', tumor)
-                muts = pd.concat([muts,tnp_muts])
-                oriVSsim_types['TNP'] = 0
-            ## If there are still some mutations that are not simulated remove them from case_counts
-            case_counts = case_counts - oriVSsim_types
-            break
-        rounds += 1
-
-    muts.reset_index(drop=True, inplace=True)
-
-    return(muts, case_counts)
-
-def select_case_mutations(muts, case_counts) -> list:
-
-    """
-    Function to select the mutations from the whole mutations database for a case
-    """
+    case_mut:pd.DataFrame = pd.DataFrame()
+    for mut, nmut in case_counts.items():
+        mut = mut.lower() if mut.startswith('SBS') else mut
+        if nmut != 0:
+            concat_tmp:pd.DataFrame = pd.DataFrame()
+            while concat_tmp.shape[0] < nmut:
+                tmp:pd.DataFrame = mutSynthesizer.generate_samples(nmut, var_column='signature', var_class=mut)
+                tmp = filter_muts(tmp)
+                concat_tmp = pd.concat([concat_tmp, tmp], ignore_index=True)
+            concat_tmp = concat_tmp.sample(n=nmut).reset_index(drop=True)
+            case_mut = pd.concat([case_mut, concat_tmp], ignore_index=True)
     
-    case_muts:pd.DataFrame = pd.DataFrame()
-    for mut,n in zip(case_counts.index, case_counts):
-        if n == 0:
-            continue
-        else:
-            if mut.startswith("SBS"):
-                col = "signature"
-            else:
-                col = "mut"
-            tmp:pd.DataFrame = muts[(muts[col]==mut)].take(indices=range(int(n)), axis=0)
-
-            ## Update case mutations dataframe
-            case_muts = pd.concat([case_muts,tmp])
-            case_muts.reset_index(drop=True, inplace=True)
-            ## Update muts dataframe
-            muts.drop(labels=tmp.index, axis=0, inplace=True)
-            muts.reset_index(drop=True, inplace=True)
-
-    return(muts, case_muts)
+    case_mut['signature'] = case_mut['signature'].astype(str).str.upper()
+    
+    return(case_mut)
 
 def gender_selection(tumor) -> str:
 
@@ -2147,7 +2093,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
     cna_sv_counts:pd.DataFrame = select_cna_sv_counts(cna_sv_countModel, nCases, tumor, counts)
 
     # Simulate one donor at a time
-    muts:pd.DataFrame = pd.DataFrame()
+    # muts:pd.DataFrame = pd.DataFrame()
     for idx in tqdm(range(nCases), desc = "Donors"):
         output:str = out_path(outDir, prefix, tumor, idx+1)
         
@@ -2170,18 +2116,8 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             # Simulate driver mutations to each donor
             case_drivers:pd.Series = simulate_drivers(drivers_tumor, driversModel)
 
-
             # Generate the mutations
-            muts, case_muts = simulate_mutations(mutModel, muts, nMut, case_counts, drivers_tumor)
-            
-            # Select the mutations corresponding for this case
-            muts, case_muts = select_case_mutations(muts, case_counts)
-
-            # Reduce muts size over rounds
-            if muts.shape[0] > 1e7:
-                muts = pd.DataFrame()
-            else:
-                muts = muts.sample(frac=0.5).reset_index(drop=True)
+            case_muts:pd.DataFrame = simulate_mutations(mutModel, case_counts)
 
             # Generate the chromosome and position of the mutations
             case_muts = assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender, cpus)
