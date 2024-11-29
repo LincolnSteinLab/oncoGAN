@@ -54,11 +54,20 @@ from ctabgan.train_drivers import trainDrivers
               type=click.STRING,
               default = None,
               help="Integer columns. Comma separated with no space (e.g. x,y,z)")
+@click.option("--general_columns",
+              type=click.STRING,
+              default = None,
+              help="general columns. Comma separated with no space (e.g. x,y,z)")
+@click.option('--no-tqdm', 'tqdm_disable',
+              is_flag=True,
+              flag_value=True,
+              required=False,
+              help="Disable tqdm progress bar")
 @click.option("--debug",
               is_flag=True,
               flag_value=False,
               help="Greater verbosity for debugging purposes")
-def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, categorical_columns, log_columns, integer_columns, debug):
+def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, categorical_columns, log_columns, integer_columns, general_columns, tqdm_disable, debug):
 
     """
     Test hyperparameters for counts/drivers CTABGAN models
@@ -67,8 +76,7 @@ def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, 
     # Create the list of options
     options:list = []
     for iproduct in list(product(range(*epochs), range(*batch_size), [0.3], [i/10000 for i in range(*[int(i*10000) for i in [*lr]])])):
-        # options.append(tuple([csv, prefix, outdir]+list(iproduct)+[debug]))
-        options.append((csv, prefix, outdir, *iproduct, categorical_columns, log_columns, integer_columns, debug))
+        options.append((csv, prefix, outdir, *iproduct, categorical_columns, log_columns, integer_columns, general_columns, tqdm_disable, debug))
     
     # Iterate hyperparameters
     click.echo(f"\n########## Testing {len(options)} hyperparameters combinations ##########\n")
