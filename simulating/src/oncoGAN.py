@@ -118,11 +118,12 @@ def cna_sv_models(device) -> list:
     
     cna_sv_countModel = torch.load("/oncoGAN/trained_models/cna_sv/counts/CNA_SV_counts.pkl", map_location=device)
     cnaModel = torch.load("/oncoGAN/trained_models/cna_sv/cna/CNA_model.pkl", map_location=device)
+    svModel:dict = {}
     with open("/oncoGAN/trained_models/cna_sv/sv_positions/SV_positions.pkl", 'rb') as f:
-        sv_posModel = pickle.load(f)
-    svModel = torch.load("/oncoGAN/trained_models/cna_sv/sv/SV_model.pkl", map_location=device)
+        svModel['pos'] = pickle.load(f)
+    svModel['sv'] = torch.load("/oncoGAN/trained_models/cna_sv/sv/SV_model.pkl", map_location=device)
 
-    return(cna_sv_countModel, cnaModel, sv_posModel, svModel)
+    return(cna_sv_countModel, cnaModel, svModel)
 
 def out_path(outDir, prefix, tumor, n) -> click.Path:
 
@@ -1125,21 +1126,23 @@ def gender_selection(tumor) -> str:
     
     return(gender)
 
-def assign_chromosome(positions, cna=False, gender=None) -> pd.DataFrame:
+def assign_chromosome(positions, cna=False, sv=False, gender=None) -> pd.DataFrame:
     
     """
     Function to assign a chromosome to each position
     """
     
     # Positions are encoded in a continuous scale, so we need to decode them
-    if cna and gender == 'F':
+    if (cna or sv) and gender == 'F':
         position_decode:np.array  = np.array([0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286])
+        max_length:int = 3036303846
         chromosome_decode:np.array  = np.array(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X'])
     else:
         position_decode:np.array  = np.array([0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846])
+        max_length:int = 3095677412
         chromosome_decode:np.array  = np.array(['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y'])
 
-    if not cna:
+    if not (cna or sv):
         start_encoded:np.array  = np.digitize(positions["start"], position_decode, right=True)
         end_encoded:np.array  = np.digitize(positions["end"], position_decode, right=True)
         ## Assign new columns
@@ -1152,12 +1155,31 @@ def assign_chromosome(positions, cna=False, gender=None) -> pd.DataFrame:
         positions = positions[positions['start_chrom'] == positions['end_chrom']]
         positions.drop('end_chrom', axis=1, inplace=True)
         positions.rename(columns={'start_chrom':'chrom'}, inplace=True)
-    else:
+    elif cna:
         positions['pos'] = positions['len'].cumsum()
         pos_encoded:np.array  = np.digitize(positions["pos"], position_decode, right=True)
         ## Assign new columns
         positions["pos"] = positions["pos"] - np.take(position_decode, pos_encoded-1)
         positions["chrom"] = np.take(chromosome_decode, pos_encoded-1)
+    elif sv:
+        ## Extend chromosomes
+        position_decode = np.concatenate((position_decode, position_decode+max_length))
+        chromosome_decode = np.concatenate((chromosome_decode, chromosome_decode))
+
+        start_encoded:np.array  = np.digitize(positions["start"], position_decode, right=True)
+        end_encoded:np.array  = np.digitize(positions["end"], position_decode, right=True)
+        ## Assign new columns
+        positions["start"] = positions["start"] - np.take(position_decode, start_encoded-1)
+        positions["end"] = positions["end"] - np.take(position_decode, end_encoded-1)
+        positions["chrom1"] = np.take(chromosome_decode, start_encoded-1)
+        positions["chrom2"] = np.take(chromosome_decode, end_encoded-1)
+        positions.rename(columns={'start':'start1', 'end':'start2'}, inplace=True)
+
+        ## Remove interchromosomal DEL, DUP, INV and intrachromosomal TRA
+        positions['keep'] = False
+        positions.loc[(positions['svclass'] != 'TRA') & (positions['chrom1'] == positions['chrom2']), 'keep'] = True
+        positions.loc[(positions['svclass'] == 'TRA') & (positions['chrom1'] != positions['chrom2']), 'keep'] = True
+        positions = positions[positions['keep']].drop(columns=['keep'])
 
     return(positions)
 
@@ -1541,26 +1563,54 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
 
     return(vcf)
 
-def hg19tohg38(vcf) -> pd.DataFrame:
+def hg19tohg38(vcf=None, cna=None, sv=None) -> pd.DataFrame:
 
     """
     Convert hg19 coordinates to hg38
     """
 
-    converter = ChainFile('/.liftover/hg19ToHg38.over.chain.gz')
-    for i,row in vcf.iterrows():
-        chrom:str = str(row['#CHROM'])
-        pos:int = int(row['POS'])
-        try:
-            liftOver_result:tuple = converter[chrom][pos][0]
-            vcf.loc[i, '#CHROM'] = liftOver_result[0]
-            vcf.loc[i, 'POS'] = liftOver_result[1]
-        except IndexError:
-            vcf.loc[i, '#CHROM'] = 'Remove'
-    
-    vcf = vcf[~vcf['#CHROM'].str.contains('Remove', na=False)]
+    if vcf is not None:
+        converter = ChainFile('/.liftover/hg19ToHg38.over.chain.gz')
+        for i,row in vcf.iterrows():
+            chrom:str = str(row['#CHROM'])
+            pos:int = int(row['POS'])
+            try:
+                liftOver_result:tuple = converter[chrom][pos][0]
+                vcf.loc[i, '#CHROM'] = liftOver_result[0]
+                vcf.loc[i, 'POS'] = liftOver_result[1]
+            except IndexError:
+                vcf.loc[i, '#CHROM'] = 'Remove'
+        vcf = vcf[~vcf['#CHROM'].str.contains('Remove', na=False)]
+        return(vcf)
+    elif cna is not None:
+        hg19_end:list = [249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846,3095677412]
+        hg38_end:list = [248956422,491149951,689445510,879660065,1061198324,1232004303,1391350276,1536488912,1674883629,1808681051,1943767673,2077042982,2191407310,2298451028,2400442217,2490780562,2574038003,2654411288,2713028904,2777473071,2824183054,2875001522,3031042417,3088269832]
+        hg19_hg38_ends:dict = dict(zip(hg19_end, hg38_end))
 
-    return(vcf)
+        cna['end'] = cna['end'].apply(lambda x: hg19_hg38_ends.get(x, x))
+        return(cna)
+    elif sv is not None:
+        chroms:list = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y']
+        hg19_end:list = [249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846,3095677412]
+        hg38_end:list = [248956422,491149951,689445510,879660065,1061198324,1232004303,1391350276,1536488912,1674883629,1808681051,1943767673,2077042982,2191407310,2298451028,2400442217,2490780562,2574038003,2654411288,2713028904,2777473071,2824183054,2875001522,3031042417,3088269832]
+        hg19_dict:dict = dict(zip(chroms, hg19_end))
+        hg38_dict:dict = dict(zip(chroms, hg38_end))
+
+        for i, row in sv.iterrows():
+            ## Chrom1
+            hg19_end1:int = hg19_dict.get(row['chrom1'])
+            hg38_end1:int = hg38_dict.get(row['chrom1'])
+            if row['end1'] > hg38_end1:
+                sv.loc[i, 'end1'] = hg38_end1 - (hg19_end1 - row['end1'])
+                sv.loc[i, 'start1'] = sv.loc[i, 'end1']-1
+
+            ## Chrom2
+            hg19_end2:int = hg19_dict.get(row['chrom2'])
+            hg38_end2:int = hg38_dict.get(row['chrom2'])
+            if row['end2'] > hg38_end2:
+                sv.loc[i, 'end2'] = hg38_end2 - (hg19_end2 - row['end2'])
+                sv.loc[i, 'start2'] = sv.loc[i, 'end2']-1
+        return(sv)
 
 def select_cna_sv_counts(cna_sv_countModel, nCases, tumor, counts) -> pd.DataFrame:
 
@@ -1891,6 +1941,119 @@ def plot_cnas(cna_profile, output, idx) -> None:
     # Save the plot
     plt.savefig(output)
 
+def get_sv_coordinates(n, svModel, gender) -> pd.DataFrame:
+    
+    """
+    Generate genomic coordinates for SV
+    """
+
+    # Generate position ranks
+    tmp_pos:pd.DataFrame = svModel['pos']['step1'].sample(num_rows = round(n*5))
+
+    # Remove Y coordinates
+    if gender == "F":
+        y_ranks:list = ['[3.03e+07;3.06e+07)', '[3.06e+07;3.09e+07)', '[3.09e+07;3.1e+07]']
+        tmp_pos = tmp_pos[~tmp_pos['rank'].isin(y_ranks)]
+    
+    # Keep the correct number of SV
+    tmp_pos = tmp_pos.sample(n=n)
+
+    # Simulate the exact positions
+    step1:pd.Series = tmp_pos['rank'].value_counts()
+    positions:pd.DataFrame = pd.DataFrame()
+    for rank, m in zip(step1.index, step1):
+        try:
+            positions = pd.concat([positions, svModel['pos'][rank].sample(num_rows = m)])
+        except KeyError:
+            continue
+    positions['start'] = positions['start']*100
+    positions.reset_index(drop=True, inplace=True)
+
+    return(positions['start'])
+
+def check_sv_strand_patterns(sv_profile) -> pd.DataFrame:
+
+    """
+    Check SV strand patterns
+    """
+
+    expected_patterns:dict = {
+        'DEL': ('+', '-'),
+        'DUP': ('-', '+'),
+        'h2hINV': ('+', '+'),
+        't2tINV': ('-', '-'),
+    }
+
+    # Get expected strands for the svclass
+    sv_profile['expected_strand1'], sv_profile['expected_strand2'] = zip(*sv_profile['svclass'].apply(lambda svclass: expected_patterns.get(svclass, (None, None))))
+
+    # If the current strands don't match the expected pattern, invert them
+    sv_profile['keep'] = False
+    for index, row in sv_profile.iterrows():
+        if row['svclass'] == "TRA" or (row['strand1'] == row['expected_strand1'] and row['strand2'] == row['expected_strand2']):
+            sv_profile.at[index, 'keep'] = True
+        elif row['strand1'] == row['expected_strand2'] and row['strand2'] == row['expected_strand1']:
+            # Swap values
+            sv_profile.at[index, 'start1'], sv_profile.at[index, 'start2'] = row['start2'], row['start1']
+            sv_profile.at[index, 'chrom1'], sv_profile.at[index, 'chrom2'] = row['chrom2'], row['chrom1']
+            sv_profile.at[index, 'strand1'], sv_profile.at[index, 'strand2'] = row['strand2'], row['strand1']
+            sv_profile.at[index, 'keep'] = True
+        else:
+            sv_profile.at[index, 'keep'] = False
+    
+    # Generate end1 and end2
+    sv_profile['end1'] = sv_profile['start1'] + 1
+    sv_profile['end2'] = sv_profile['start2'] + 1
+
+    # Remove SV with the wrong pattern
+    sv_profile = sv_profile[sv_profile['keep']].drop(columns=['keep'])
+    sv_profile.reset_index(drop=True, inplace=True)
+
+    # Sort columns
+    sv_profile = sv_profile[["chrom1", "start1", "end1", "chrom2", "start2", "end2", "strand1", "strand2", "svclass"]]
+
+    return(sv_profile)
+
+def simulate_sv(cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
+    
+    """
+    Generate SVs
+    """
+
+    # Simulate the events
+    case_sv:pd.DataFrame = pd.DataFrame()
+    for sv_class in nSV.index.tolist():
+        n:int = nSV[sv_class]
+        if n != 0:
+            concat_tmp_sv:pd.DataFrame = pd.DataFrame()
+            while concat_tmp_sv.shape[0] < n:
+                ## Simulate and assign SV positions
+                tmp_sv:pd.DataFrame = svModel['sv'].generate_samples(n*5, var_column='svclass', var_class=sv_class)
+                tmp_sv['start'] = get_sv_coordinates(n*5, svModel, gender)
+                tmp_sv['len'] = round(np.exp(tmp_sv['len'])*10000)
+                tmp_sv['end'] = tmp_sv['start'] + tmp_sv['len'] 
+                tmp_sv = assign_chromosome(tmp_sv, sv=True, gender=gender)
+                tmp_sv = check_sv_strand_patterns(tmp_sv)
+                concat_tmp_sv = pd.concat([concat_tmp_sv, tmp_sv], ignore_index=True)
+            
+            concat_tmp_sv = concat_tmp_sv.sample(n = n, ignore_index=True)
+            case_sv = pd.concat([case_sv, concat_tmp_sv])
+        else:
+            continue
+    # Convert positions to integers and sort the dataframe
+    case_sv[["start1", "end1", "start2", "end2"]] = case_sv[["start1", "end1", "start2", "end2"]].astype(int)
+    case_sv['chrom1'] = case_sv['chrom1'].apply(chrom2int)
+    case_sv['chrom2'] = case_sv['chrom2'].apply(chrom2int)
+    case_sv = case_sv.sort_values(by=['chrom1', 'start1', 'chrom2', 'start2'], ignore_index=True)
+    case_sv['chrom1'] = case_sv['chrom1'].apply(chrom2str)
+    case_sv['chrom2'] = case_sv['chrom2'].apply(chrom2str)
+
+    # Add donor and tumor columns
+    case_sv["donor_id"] = f"sim{idx}"
+    case_sv["tumor"] = tumor
+
+    return(case_sv)
+
 @click.group()
 def cli():
     pass
@@ -1944,22 +2107,17 @@ def availTumors():
               required=False,
               default=True,
               help="Simulate mutations")
-@click.option("--CNA/--no-CNA", "simulateCNA",
+@click.option("--CNA-SV/--no-CNA-SV", "simulateCNA_SV",
               is_flag=True,
               required=False,
               default=True,
-              help="Simulate CNA events")
-@click.option("--SV/--no-SV", "simulateSV",
-              is_flag=True,
-              required=False,
-              default=True,
-              help="Simulate SV events")
+              help="Simulate CNA and SV events")
 @click.option("--plots/--no-plots", "savePlots",
               is_flag=True,
               required = False,
               default=True,
               help="Save plots")
-def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA, simulateSV, savePlots):
+def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
 
     """
     Command to simulate mutations (VCF) for different tumor types using a GAN model
@@ -1974,7 +2132,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
 
     # Load models
     countModel, mutModel, posModel, driversModel, countCorr, countEx = tumor_models(tumor, device)
-    cna_sv_countModel, cnaModel, sv_posModel, svModel = cna_sv_models(device)
+    cna_sv_countModel, cnaModel, svModel = cna_sv_models(device)
 
     # Load reference genome
     fasta = Fasta(refGenome)
@@ -2036,28 +2194,30 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             # Create the VCF output
             vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
 
-            # Convert from hg19 to hg38
-            if hg38:
-                vcf = hg19tohg38(vcf)
-            else:
-                pass
-
             # Write the VCF
+            ## Convert from hg19 to hg38
+            if hg38:
+                vcf = hg19tohg38(vcf=vcf)
             with open(output, "w+") as out:
                 out.write("##fileformat=VCFv4.2\n")
             vcf.to_csv(output, sep="\t", index=False, mode="a")
 
-        if simulateCNA:
+        if simulateCNA_SV:
             # Simulate CNAs
             case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx+1)
             case_cna.to_csv(output.replace(".vcf", "_cna.csv"), index=False)
-            if savePlots:
-                plot_cnas(case_cna, output.replace(".vcf", "_cna.png"), idx+1)
 
-        if simulateSV:
             # Simulate SVs
-            # sv:pd.DataFrame = simulate_cnas(tumor, svModel)
-            pass
+            case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx+1)
+            
+            # Convert from hg19 to hg38
+            if hg38:
+                case_cna = hg19tohg38(cna=case_cna)
+                case_sv = hg19tohg38(sv=case_sv)
+
+            # Plots
+            if savePlots:
+                plot_cnas(case_cna, output.replace(".vcf", "_cna.png"), idx+1) 
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
