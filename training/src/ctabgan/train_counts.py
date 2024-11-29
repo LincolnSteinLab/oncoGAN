@@ -15,7 +15,7 @@ from torch import cuda, save
 
 cuda.empty_cache()
 
-def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable) -> None:
+def trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable) -> None:
 
     # Parse columns type
     categorical_columns = [] if categorical_columns == None else categorical_columns.strip().split(',')
@@ -123,13 +123,13 @@ def trainCounts(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categor
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def trainCountsClick(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
+def trainCountsClick(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
 
     """
     Train a counts CTABGAN model
     """
 
-    trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns,tqdm_disable)
+    trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable)
 
 if __name__ == '__main__':
     trainCountsClick()

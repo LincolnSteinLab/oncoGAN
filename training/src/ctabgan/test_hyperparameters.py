@@ -71,7 +71,7 @@ from ctabgan.train_drivers import trainDrivers
               flag_value=True,
               required=False,
               help="Disable tqdm progress bar")
-def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
+def testHyperparameters(cpu, function, csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
 
     """
     Test hyperparameters for counts/drivers CTABGAN models
