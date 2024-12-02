@@ -67,7 +67,7 @@ def tumor_models(tumor, device) -> list:
         mutModel['MUT'] = torch.load(f"/oncoGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
         mutModel['UNMUT'] = torch.load(f"/oncoGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
     elif tumor == "Breast-AdenoCa":
-        mutModel = torch.load("/oncoGAN/trained_models/mutations/Breast-AdenoCa_mutations_epoch1300_batchsize6500_lr0.0002_testratio0.3.pkl")
+        mutModel = torch.load("/oncoGAN/trained_models/mutations_spa/Breast-AdenoCa_mutations_gan_selection.pkl")
     else:
         mutModel = torch.load(f"/oncoGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
 
