@@ -1809,6 +1809,9 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx) -> pd.DataFrame:
     # Sort by real integer chrom order
     case_cnas = case_cnas.sort_values(by=['chrom', 'start'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
 
+    # Create an ID for each CNA segment
+    case_cnas['id'] = 'cna' + case_cnas.index.astype(str)
+
     return(case_cnas)
 
 def assign_cna_plot_color(y) -> str:
@@ -2014,7 +2017,287 @@ def check_sv_strand_patterns(sv_profile) -> pd.DataFrame:
 
     return(sv_profile)
 
-def simulate_sv(cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
+def check_sv_overlaps(sv_profile) -> pd.DataFrame:
+
+    """
+    Check if there is any overlap between SV
+    """
+
+    # Check for overlaps within each chromosome
+    sv_profile['n_overlaps'] = 0
+    for chrom, group in sv_profile.groupby('chrom1'):
+        group_indices:list = group.index
+        for i in range(len(group_indices)):
+            current_row:pd.Series = group.iloc[i]
+            ## Find the next row
+            n:int = 0
+            ii:int = 1
+            while True:
+                try:
+                    next_row:pd.Series = group.iloc[i+ii+n]
+                    while next_row['svclass'] == "TRA":
+                        ii += 1
+                        next_row = group.iloc[i + ii]
+                except IndexError:
+                    sv_profile.loc[group_indices[i], 'n_overlaps'] = n
+                    break
+                ## Check if there is an overlap
+                if current_row['start2'] > next_row['start1']:
+                    n += 1
+                else:
+                    sv_profile.loc[group_indices[i], 'n_overlaps'] = n
+                    break
+
+    # Remove only events that overlap with events that also overlap
+    sv_profile['keep'] = True
+    for chrom, group in sv_profile.groupby('chrom1'):
+        for idx, row in group.iterrows():
+            n_overlaps:int = row['n_overlaps']
+            if n_overlaps == 0:
+                continue
+            else:
+                check_idx:list = list(range(idx + 1, idx + 1 + n_overlaps))
+                overlap_sum:int = group.loc[group.index.isin(check_idx), 'n_overlaps'].sum()
+                if overlap_sum != 0:
+                    sv_profile.loc[idx, 'keep'] = False
+                else:
+                    continue
+    
+    sv_profile = sv_profile[sv_profile['keep']]
+    sv_profile = sv_profile.drop(columns=['n_overlaps', 'keep']).reset_index(drop=True)
+
+    return(sv_profile)
+
+def sort_sv(sv) -> pd.DataFrame: 
+
+    """
+    Sort SV dataframe
+    """
+
+    sv[["start1", "end1", "start2", "end2"]] = sv[["start1", "end1", "start2", "end2"]].astype(int)
+    sv['chrom1'] = sv['chrom1'].apply(chrom2int)
+    sv['chrom2'] = sv['chrom2'].apply(chrom2int)
+    sv = sv.sort_values(by=['chrom1', 'start1', 'chrom2', 'start2'], ignore_index=True)
+    sv['chrom1'] = sv['chrom1'].apply(chrom2str)
+    sv['chrom2'] = sv['chrom2'].apply(chrom2str)
+    
+    return(sv)
+
+def cna2sv_dupdel(cna) -> pd.DataFrame:
+
+    """
+    Automatically create DUP/DEL SVs based on CNA events
+    """
+    
+    rows:list = []
+    for _,row in cna.iterrows():
+        chrom, start, end, major_cn, minor_cn, cna_id,  = row['chrom'], row['start'], row['end'], row['major_cn'], row['minor_cn'], row['id']
+    
+        # Duplications
+        if major_cn > 1:
+            rows.append({
+                "chrom1": chrom, "start1": start, "end1": start + 1,
+                "chrom2": chrom, "start2": end, "end2": end + 1,
+                "strand1": "-", "strand2": "+", "svclass": "DUP",
+                "id": cna_id, "allele": "major"})
+        if minor_cn > 1:
+            rows.append({
+                "chrom1": chrom, "start1": start, "end1": start + 1,
+                "chrom2": chrom, "start2": end, "end2": end + 1,
+                "strand1": "-", "strand2": "+", "svclass": "DUP",
+                "id": cna_id, "allele": "minor"})
+        # Deletions
+        if major_cn < 1:
+            rows.append({
+                "chrom1": chrom, "start1": start, "end1": start + 1,
+                "chrom2": chrom, "start2": end, "end2": end + 1,
+                "strand1": "+", "strand2": "-", "svclass": "DEL",
+                "id": cna_id, "allele": "major"})
+        if minor_cn < 1:
+            rows.append({
+                "chrom1": chrom, "start1": start, "end1": start + 1,
+                "chrom2": chrom, "start2": end, "end2": end + 1,
+                "strand1": "+", "strand2": "-", "svclass": "DEL",
+                "id": cna_id, "allele": "minor"})
+    
+    sv_dupdel:pd.DataFrame = pd.DataFrame(rows)
+    return(sv_dupdel)
+
+def find_closest_range(row, cna) -> tuple:
+
+    """
+    Find the closest CNA event to each of the simulated SVs
+    """
+
+    # Remove homozygous CNA deletions events
+    cna = cna[cna['major_cn'] != 0]
+
+    # Convert positions to a continous range
+    keys:list = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y']
+    values:list = [0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846]
+    chrom_cumsum_dict:dict = dict(zip(keys, values))
+    cna['start_continous'] = cna.apply(lambda x: x['start'] + chrom_cumsum_dict[str(x['chrom'])], axis=1)
+    row['start1'] = row['start1'] + chrom_cumsum_dict[str(row['chrom1'])]
+    row['start2'] = row['start2'] + chrom_cumsum_dict[str(row['chrom2'])]
+
+    # Find closest start
+    cna['start_distance'] = cna.apply(lambda x: (row['start1'] - x['start_continous']) if (row['start1'] - x['start_continous']) > 0 else float('inf'), axis=1)
+    closest_start:pd.DataFrame = cna.loc[cna['start_distance'].idxmin()]
+    closest_start.rename({"id": "start1_id"}, inplace=True)
+    
+    # Find closest end
+    cna['end_distance'] = cna.apply(lambda x: (row['start2'] - x['start_continous']) if (row['start2'] - x['start_continous']) > 0 else float('inf'), axis=1)
+    closest_end:pd.DataFrame = cna.loc[cna['end_distance'].idxmin()]
+    closest_end.rename({"id": "start2_id"}, inplace=True)
+    
+    return(closest_start['start1_id'], closest_end['start2_id'])
+
+def assign_inv_alleles(row, cna) -> str:
+
+    """
+    Assign major/minor allele tags for inversions
+    """
+
+    # Extract CNA information
+    row['keep'] = True
+    row['allele'] = np.random.choice(['major', 'minor'])
+    if row['start1_id'] == row['start2_id']:
+        row['id'] = row['start1_id']
+        cn:pd.Series = cna.loc[cna['id'] == row['start1_id'], ['major_cn', 'minor_cn']].iloc[0]
+    elif row['svclass'] == "h2hINV":
+        row['id'] = row['start1_id']
+        cn:pd.Series = cna.loc[cna['id'] == row['start1_id'], ['major_cn', 'minor_cn']].iloc[0]
+    elif row['svclass'] == "t2tINV":
+        row['id'] = row['start2_id']
+        cn:pd.Series = cna.loc[cna['id'] == row['start2_id'], ['major_cn', 'minor_cn']].iloc[0]
+    else:
+        pass
+
+    # Assign alleles
+    if cn['major_cn'] == 0:
+            row['keep'] = False
+    elif cn['minor_cn'] == 0:
+        row['allele'] = 'major'
+    else:
+        pass
+
+    return(row['id'], row['allele'], row['keep'])
+
+def assign_inv(cna, sv, sv_deldup) -> pd.DataFrame:
+
+    """
+    Assign simulated inversions to CNA events
+    """
+
+    # Assign the inversions based on CNA events
+    sv_inv:pd.DataFrame = sv[sv['svclass'].isin(['h2hINV', 't2tINV'])]
+    sv_inv = check_sv_overlaps(sv_inv)
+    sv_inv[['start1_id', 'start2_id']] = sv_inv.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
+    sv_inv[['id', 'allele', 'keep']] = sv_inv.apply(lambda row: assign_inv_alleles(row, cna), axis=1, result_type='expand')
+    sv_inv = sv_inv[sv_inv['keep']]
+    sv_inv = sv_inv.drop(columns=['start1_id', 'start2_id', 'keep']).reset_index(drop=True)
+    
+    # Concatenate del, dup and inv
+    sv_deldup_inv:pd.DataFrame = pd.concat([sv_deldup, sv_inv], ignore_index = True)
+    sv_deldup_inv = sort_sv(sv_deldup_inv)
+
+    return(sv_deldup_inv)
+
+def assign_tra_alleles_len(row, cna) -> str:
+
+    """
+    Assign major/minor allele tags for translocations and define the length
+    """
+
+    # Extract CNA information
+    cna = cna[cna['chrom'].isin([row['chrom1'], row['chrom2']])]
+    ## In 20% of TRA create a more complex event
+    if np.random.rand() < 0.2:
+        try:
+            cn_alt_id:str = np.random.choice(['start1_id', 'start2_id'])
+            cn_norm_id:str = 'start1_id' if cn_alt == 'start2_id' else 'start2_id'
+
+            cna_alt_id_value:str = f'cna{int(row[cn_alt_id].replace("cna", "")) + 1}'
+            cna_norm_id_value:str = row[cn_norm_id]
+            if cn_alt_id == 'start1_id':
+                cn1:pd.Series = cna.loc[cna['id'] == cna_alt_id_value].squeeze()
+            else:
+                cn2:pd.Series = cna.loc[cna['id'] == cna_alt_id_value].squeeze()
+
+            if cn_norm_id == 'start1_id':
+                cn1:pd.Series = cna.loc[cna['id'] == cna_norm_id_value].squeeze()
+            else:
+                cn2:pd.Series = cna.loc[cna['id'] == cna_norm_id_value].squeeze()
+        except:
+            # In case the next CNA event is not located in the same chromosome
+            cn1:pd.Series = cna.loc[cna['id'] == row['start1_id']].squeeze()
+            cn2:pd.Series = cna.loc[cna['id'] == row['start2_id']].squeeze()
+    else:
+        cn1:pd.Series = cna.loc[cna['id'] == row['start1_id']].squeeze()
+        cn2:pd.Series = cna.loc[cna['id'] == row['start2_id']].squeeze()
+    
+    # Select an allele
+    row['allele1'] = np.random.choice(['major', 'minor'])
+    row['allele2'] = np.random.choice(['major', 'minor'])
+    if cn1['minor_cn'] == 0 and cn2['minor_cn'] == 0 and row['allele1'] == "minor" and row['allele2'] == "minor":
+        change_allele:str = np.random.choice(['allele1', 'allele2'])
+        row[change_allele] = 'major'
+
+    # Define TRA length
+    ## First chrom
+    if row['strand1'] == '+':
+        row['start1'] = cn1['start']
+    else:
+        row['end1'] = cn1['end']
+    ## Second chrom
+    if row['strand2'] == '+':
+        row['start2'] = cn2['start']
+    else:
+        row['end2'] = cn2['end']
+    
+    # Adapt row shape
+    row['id'] = f"{row['start1_id']},{row['start2_id']}"
+    row['allele'] = f"{row['allele1']},{row['allele2']}"
+    row.drop(labels=['start1_id', 'start2_id', 'allele1', 'allele2'], inplace=True)
+    
+    return(row)
+
+def assign_tra(cna, sv, sv_deldup_inv) -> pd.DataFrame:
+    
+    """
+    Assign simulated translocations to CNA events
+    """
+
+    # Assign the inversions based on CNA events
+    sv_tra:pd.DataFrame = sv[sv['svclass']=='TRA']
+    sv_tra = check_sv_overlaps(sv_tra)
+    sv_tra[['start1_id', 'start2_id']] = sv_tra.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
+    sv_tra = sv_tra.apply(lambda row: assign_tra_alleles_len(row, cna), axis=1)
+
+    # Concatenate all SV
+    sv_deldup_inv_tra:pd.DataFrame = pd.concat([sv_deldup_inv, sv_tra], ignore_index = True)
+    sv_deldup_inv_tra = sort_sv(sv_deldup_inv_tra)
+
+    return(sv_deldup_inv_tra)
+
+def align_cna_sv(cna, sv) -> pd.DataFrame():
+
+    """
+    Assign SV to CNA events
+    """
+
+    # Automatically create DUP/DEL SVs based on CNA events
+    sv_assigned:pd.DataFrame = cna2sv_dupdel(cna)
+
+    # Assign simulated INV based on CNA events
+    sv_assigned = assign_inv(cna, sv, sv_assigned)
+
+    # Assign simulated TRA based on CNA events
+    sv_assigned = assign_tra(cna, sv, sv_assigned)
+
+    return(sv_assigned)
+
+def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
     
     """
     Generate SVs
@@ -2040,14 +2323,13 @@ def simulate_sv(cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
             case_sv = pd.concat([case_sv, concat_tmp_sv])
         else:
             continue
-    # Convert positions to integers and sort the dataframe
-    case_sv[["start1", "end1", "start2", "end2"]] = case_sv[["start1", "end1", "start2", "end2"]].astype(int)
-    case_sv['chrom1'] = case_sv['chrom1'].apply(chrom2int)
-    case_sv['chrom2'] = case_sv['chrom2'].apply(chrom2int)
-    case_sv = case_sv.sort_values(by=['chrom1', 'start1', 'chrom2', 'start2'], ignore_index=True)
-    case_sv['chrom1'] = case_sv['chrom1'].apply(chrom2str)
-    case_sv['chrom2'] = case_sv['chrom2'].apply(chrom2str)
+    
+    # Sort
+    case_sv = sort_sv(case_sv)
 
+    # Assign SV to CNA events
+    case_sv = align_cna_sv(case_cna, case_sv)
+    
     # Add donor and tumor columns
     case_sv["donor_id"] = f"sim{idx}"
     case_sv["tumor"] = tumor
@@ -2205,10 +2487,11 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
         if simulateCNA_SV:
             # Simulate CNAs
             case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx+1)
-            case_cna.to_csv(output.replace(".vcf", "_cna.csv"), index=False)
+            case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx+1)
+            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
             
             # Convert from hg19 to hg38
             if hg38:
