@@ -14,10 +14,12 @@ import numpy as np
 import multiprocessing
 import matplotlib.pyplot as plt
 import seaborn as sns
+from datetime import date
 from liftover import ChainFile
 from tqdm import tqdm
 from pyfaidx import Fasta
 
+VERSION = "0.1"
 
 def tumor_models(tumor, device) -> list:
 
@@ -1108,7 +1110,7 @@ def select_case_mutations(muts, case_counts) -> list:
             ## Update muts dataframe
             muts.drop(labels=tmp.index, axis=0, inplace=True)
             muts.reset_index(drop=True, inplace=True)
-
+            
     return(muts, case_muts)
 
 def gender_selection(tumor) -> str:
@@ -1492,11 +1494,13 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_
             pass
 
     # Reorganize columns
-    selected_drivers['VAF'] = drivers_vaf
     selected_drivers['ID'] = [f"sim{donorID+1}"] * drivers_counts.sum()
+    selected_drivers["QUAL"] = "."
+    selected_drivers["FILTER"] = "."
     selected_drivers['driver'] = selected_drivers['driver'].apply(lambda x: f'driver_{x}')
-    selected_drivers.rename(columns={'chrom':'#CHROM', 'start':'POS', 'ref':'REF', 'alt':'ALT', 'driver':'MUT'}, inplace=True)
-    selected_drivers = selected_drivers[['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'VAF', 'MUT']]
+    selected_drivers['INFO'] = selected_drivers.apply(lambda row: f"AF={drivers_vaf[row.name]};MS={row['driver']}", axis=1)
+    selected_drivers.rename(columns={'chrom':'#CHROM', 'start':'POS', 'ref':'REF', 'alt':'ALT'}, inplace=True)
+    selected_drivers = selected_drivers[['#CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO']]
 
     # Concatenate
     vcf = pd.concat([vcf, selected_drivers], ignore_index=True)
@@ -1512,45 +1516,49 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
     # Create the appropiate row for each type of mutation
     new_ref_list:list = []
     new_alt_list:list = []
+    mut_sig_list:list = []
     for _,mut in muts.iterrows():
-        chrom,pos,ref,alt,mut_len,mut_type = str(mut['chrom']),int(mut['pos']),str(mut['r.ctx']),str(mut['a.ctx']),int(mut['len']),str(mut['mut'])
+        chrom,pos,ref,alt,mut_len,mut_type,signature = str(mut['chrom']),int(mut['pos']),str(mut['r.ctx']),str(mut['a.ctx']),int(mut['len']),str(mut['mut']),str(mut['signature'])
         if mut_type == "SNP":
             new_ref_list.append(ref[1])
             new_alt_list.append(alt[1])
+            mut_sig_list.append(signature)
             continue
         elif mut_type == "DNP":
             new_ref_list.append("".join(ref[1:]))
             new_alt_list.append("".join(alt[1:]))
+            mut_sig_list.append(mut_type)
             continue
         elif mut_type == "TNP":
             new_ref_list.append(ref)
             new_alt_list.append(alt)
+            mut_sig_list.append(mut_type)
             continue
         elif mut_type == "INS":
             new_ref_list.append(ref[1])
             nt = ["A", "C", "G", "T"]
             ## Simulate a random insertion considering the simulated length
             new_alt_list.append(ref[1]+"".join(random.choices(nt, k = mut_len)))
+            mut_sig_list.append(mut_type)
             continue
         elif mut_type == "DEL":
             ## Get the region that have to be deleted from fasta
             ctx = fasta[chrom][pos:pos+abs(mut_len)].seq
             new_ref_list.append(ref[1]+ctx)
             new_alt_list.append(ref[1])
+            mut_sig_list.append(mut_type)
             continue
     
     # Create the VCF
     vcf:dict = {"#CHROM":muts['chrom'],
-                    "POS":muts['pos'],
-                    "ID":[f"sim{donorID+1}"] * len(muts['chrom']),
-                    "REF":new_ref_list,
-                    "ALT":new_alt_list,
-                    "VAF":muts['vaf'],
-                    "MUT":muts['mut'],
-                    "SIGNATURE":muts['signature']}
+                "POS":muts['pos'],
+                "ID":[f"sim{donorID+1}"] * len(muts['chrom']),
+                "REF":new_ref_list,
+                "ALT":new_alt_list,
+                "QUAL":".",
+                "FILTER":".",
+                "INFO":[f"AF={vaf};MS={sig}" for vaf, sig in zip(muts['vaf'], mut_sig_list)]}
     vcf = pd.DataFrame(vcf)
-    vcf["MUT"][vcf["MUT"] == "SNP"] = vcf["SIGNATURE"][vcf["MUT"] == "SNP"]
-    vcf.drop('SIGNATURE', axis=1, inplace=True)
 
     # Assign driver mutations to the VCF
     if drivers_counts.sum() > 0:
@@ -1560,6 +1568,11 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
     vcf['#CHROM'] = vcf['#CHROM'].apply(chrom2int)
     vcf = vcf.sort_values(by=['#CHROM', 'POS'])
     vcf['#CHROM'] = vcf['#CHROM'].apply(chrom2str)
+
+    # Filter out some random and very infrequent DNP, TNP and repeated SNPs
+    vcf['keep'] = abs(vcf['POS'].diff()) > 2
+    vcf = vcf[vcf['keep'].shift(-1, fill_value=False)]
+    vcf = vcf.drop(columns=['keep']).reset_index(drop=True)
 
     return(vcf)
 
@@ -2280,7 +2293,7 @@ def assign_tra(cna, sv, sv_deldup_inv) -> pd.DataFrame:
 
     return(sv_deldup_inv_tra)
 
-def align_cna_sv(cna, sv) -> pd.DataFrame():
+def align_cna_sv(cna, sv) -> pd.DataFrame:
 
     """
     Assign SV to CNA events
@@ -2396,9 +2409,12 @@ def availTumors():
               help="Simulate CNA and SV events")
 @click.option("--plots/--no-plots", "savePlots",
               is_flag=True,
-              required = False,
+              required=False,
               default=True,
               help="Save plots")
+@click.version_option(version=VERSION,
+                      package_name="OncoGAN",
+                      prog_name="OncoGAN")
 def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
 
     """
@@ -2482,6 +2498,11 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
                 vcf = hg19tohg38(vcf=vcf)
             with open(output, "w+") as out:
                 out.write("##fileformat=VCFv4.2\n")
+                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                out.write(f"##source=OncoGAN-v{VERSION}\n")
+                out.write(f"##reference={'hg38' if hg38 else 'hg37'}\n")
+                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
             vcf.to_csv(output, sep="\t", index=False, mode="a")
 
         if simulateCNA_SV:
