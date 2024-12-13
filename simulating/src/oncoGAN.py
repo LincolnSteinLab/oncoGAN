@@ -2030,10 +2030,10 @@ def check_sv_strand_patterns(sv_profile) -> pd.DataFrame:
 
     return(sv_profile)
 
-def check_sv_overlaps(sv_profile) -> pd.DataFrame:
+def check_inv_overlaps(sv_profile) -> pd.DataFrame:
 
     """
-    Check if there is any overlap between SV
+    Check if there is any overlap between inversions
     """
 
     # Check for overlaps within each chromosome
@@ -2044,20 +2044,16 @@ def check_sv_overlaps(sv_profile) -> pd.DataFrame:
             current_row:pd.Series = group.iloc[i]
             ## Find the next row
             n:int = 0
-            ii:int = 1
             while True:
                 try:
-                    next_row:pd.Series = group.iloc[i+ii+n]
-                    while next_row['svclass'] == "TRA":
-                        ii += 1
-                        next_row = group.iloc[i + ii]
+                    next_row:pd.Series = group.iloc[i+1+n]
+                    ## Check if there is an overlap
+                    if current_row['start2'] > next_row['start1']:
+                        n += 1
+                    else:
+                        sv_profile.loc[group_indices[i], 'n_overlaps'] = n
+                        break
                 except IndexError:
-                    sv_profile.loc[group_indices[i], 'n_overlaps'] = n
-                    break
-                ## Check if there is an overlap
-                if current_row['start2'] > next_row['start1']:
-                    n += 1
-                else:
                     sv_profile.loc[group_indices[i], 'n_overlaps'] = n
                     break
 
@@ -2078,6 +2074,81 @@ def check_sv_overlaps(sv_profile) -> pd.DataFrame:
     
     sv_profile = sv_profile[sv_profile['keep']]
     sv_profile = sv_profile.drop(columns=['n_overlaps', 'keep']).reset_index(drop=True)
+
+    return(sv_profile)
+
+def check_tra_overlaps(sv_profile) -> pd.DataFrame:
+    #TODO - Tengo que duplicar las entradas para contar ambas duplicaciones, porque antes solo estabamos contando una, y asegurarme de quue luego eliminamos la sv_id correct (tenemos que crearla), similar a como hemos hecho en R
+    """
+    Check if there is any overlap between translocations
+    """
+
+    # Pivot longer second chrom events
+    sv_profile['sv_id'] = ['sv{}'.format(i) for i in range(len(sv_profile))]
+    sv_profile_long = pd.concat([
+        sv_profile[['sv_id', 'chrom1', 'start1', 'end1', 'strand1', 'svclass', 'id', 'allele']].rename(columns={'chrom1': 'chrom', 'start1': 'start', 'end1': 'end', 'strand1': 'strand'}),
+        sv_profile[['sv_id', 'chrom2', 'start2', 'end2', 'strand2', 'svclass', 'id', 'allele']].rename(columns={'chrom2': 'chrom', 'start2': 'start', 'end2': 'end', 'strand2': 'strand'})])
+    sv_profile_long.reset_index(drop=True, inplace=True)
+    ## Sort the new dataframe
+    sv_profile_long[["start", "end"]] = sv_profile_long[["start", "end"]].astype(int)
+    sv_profile_long['chrom'] = sv_profile_long['chrom'].apply(chrom2int)
+    sv_profile_long = sv_profile_long.sort_values(by=['chrom', 'start'], ignore_index=True)
+    sv_profile_long['chrom'] = sv_profile_long['chrom'].apply(chrom2str)
+    
+    # Check for overlaps within each chromosome
+    sv_profile_long['n_overlaps'] = 0
+    for chrom, group in sv_profile_long.groupby('chrom'):
+        group_indices:list = group.index
+        for i in range(len(group_indices)):
+            current_row:pd.Series = group.iloc[i]
+            ## Find the next row
+            n:int = 0
+            while True:
+                try:
+                    next_row:pd.Series = group.iloc[i+1+n]
+                    ## Check if there is an overlap
+                    if current_row['end'] > next_row['start']:
+                        n += 1
+                    else:
+                        sv_profile_long.loc[group_indices[i], 'n_overlaps'] = n
+                        break
+                except IndexError:
+                    sv_profile_long.loc[group_indices[i], 'n_overlaps'] = n
+                    break
+
+    # Remove only events that overlap with events that also overlap
+    sv_profile_long['keep'] = True
+    for chrom, group in sv_profile_long.groupby('chrom'):
+        for idx, row in group.iterrows():
+            n_overlaps:int = row['n_overlaps']
+            if n_overlaps == 0:
+                continue
+            else:
+                check_idx:list = list(range(idx + 1, idx + 1 + n_overlaps))
+                overlap_sum:int = group.loc[group.index.isin(check_idx), 'n_overlaps'].sum()
+                if overlap_sum != 0:
+                    sv_profile_long.loc[idx, 'keep'] = False
+                else:
+                    continue
+
+    sv_profile_long = sv_profile_long[sv_profile_long['keep']]
+    sv_profile_long = sv_profile_long.drop(columns=['n_overlaps', 'keep']).reset_index(drop=True)
+    sv_profile_long = sv_profile_long.groupby('sv_id').filter(lambda group: len(group) == 2)
+
+    # Pivot wider the dataframe to the original shape
+    sv_profile = sv_profile_long.groupby('sv_id').apply(
+        lambda group: pd.Series({
+            'chrom1': group.iloc[0]['chrom'],
+            'start1': group.iloc[0]['start'],
+            'end1': group.iloc[0]['end'],
+            'chrom2': group.iloc[1]['chrom'],
+            'start2': group.iloc[1]['start'],
+            'end2': group.iloc[1]['end'],
+            'strand1': group.iloc[0]['strand'],
+            'strand2': group.iloc[1]['strand'],
+            'svclass': group.iloc[0]['svclass'],
+            'id': group.iloc[0]['id'],
+            'allele': group.iloc[0]['allele']})).reset_index()
 
     return(sv_profile)
 
@@ -2204,7 +2275,8 @@ def assign_inv(cna, sv, sv_deldup) -> pd.DataFrame:
 
     # Assign the inversions based on CNA events
     sv_inv:pd.DataFrame = sv[sv['svclass'].isin(['h2hINV', 't2tINV'])]
-    sv_inv = check_sv_overlaps(sv_inv)
+    sv_inv = sv_inv.reset_index(drop=True)
+    sv_inv = check_inv_overlaps(sv_inv)
     sv_inv[['start1_id', 'start2_id']] = sv_inv.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
     sv_inv[['id', 'allele', 'keep']] = sv_inv.apply(lambda row: assign_inv_alleles(row, cna), axis=1, result_type='expand')
     sv_inv = sv_inv[sv_inv['keep']]
@@ -2276,16 +2348,17 @@ def assign_tra_alleles_len(row, cna) -> str:
     return(row)
 
 def assign_tra(cna, sv, sv_deldup_inv) -> pd.DataFrame:
-    
+
     """
     Assign simulated translocations to CNA events
     """
 
     # Assign the inversions based on CNA events
     sv_tra:pd.DataFrame = sv[sv['svclass']=='TRA']
-    sv_tra = check_sv_overlaps(sv_tra)
+    sv_tra = sv_tra.reset_index(drop=True)
     sv_tra[['start1_id', 'start2_id']] = sv_tra.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
     sv_tra = sv_tra.apply(lambda row: assign_tra_alleles_len(row, cna), axis=1)
+    sv_tra = check_tra_overlaps(sv_tra)
 
     # Concatenate all SV
     sv_deldup_inv_tra:pd.DataFrame = pd.concat([sv_deldup_inv, sv_tra], ignore_index = True)
