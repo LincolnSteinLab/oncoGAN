@@ -2573,7 +2573,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
                 out.write("##fileformat=VCFv4.2\n")
                 out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
                 out.write(f"##source=OncoGAN-v{VERSION}\n")
-                out.write(f"##reference={'hg38' if hg38 else 'hg37'}\n")
+                out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
                 out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
                 out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
             vcf.to_csv(output, sep="\t", index=False, mode="a")
