@@ -1840,7 +1840,7 @@ def assign_cna_plot_color(y) -> str:
     else:
         return "Loss"
     
-def plot_cnas(cna_profile, output, idx) -> None:
+def plot_cnas(cna_profile, sv_profile, output, idx) -> None:
 
     """
     Plot CNA segments
@@ -1848,6 +1848,8 @@ def plot_cnas(cna_profile, output, idx) -> None:
 
     # Change chrom format to str
     cna_profile['chrom'] = cna_profile['chrom'].astype(str)
+    sv_profile['chrom1'] = sv_profile['chrom1'].astype(str)
+    sv_profile['chrom2'] = sv_profile['chrom2'].astype(str)
 
     # Define chromosome lengths
     chrom_list:list = list(range(1, 23)) + ["X", "Y"]
@@ -1865,34 +1867,74 @@ def plot_cnas(cna_profile, output, idx) -> None:
         chrom_cumsum_length = chrom_cumsum_length.iloc[:-1]
 
     # Preprocess the data
-    ## Left join CNAs with chromosome lengths
+    ## Pivot longer SVs
+    sv_profile['sv_id'] = ['sv{}'.format(i) for i in range(len(sv_profile))]
+    ### Inversions
+    sv_profile_inv = sv_profile[sv_profile['svclass'].isin(['h2hINV', 't2tINV'])]
+    sv_profile_inv = sv_profile_inv.rename(columns={'chrom1': 'chrom', 'start1': 'start', 'start2': 'end'})
+    sv_profile_inv = sv_profile_inv[['chrom', 'start', 'end', 'svclass', 'sv_id']]
+    ### Translocations
+    sv_profile_tra = sv_profile[sv_profile['svclass']=='TRA']
+    sv_profile_long_tra = pd.concat([
+        sv_profile_tra[['chrom1', 'start1', 'end1', 'svclass', 'sv_id']].rename(columns={'chrom1': 'chrom', 'start1': 'start', 'end1': 'end'}),
+        sv_profile_tra[['chrom2', 'start2', 'end2', 'svclass', 'sv_id']].rename(columns={'chrom2': 'chrom', 'start2': 'start', 'end2': 'end'})])
+    sv_profile_long_tra.reset_index(drop=True, inplace=True)
+    ### Concatenate
+    sv_profile_long = pd.concat([sv_profile_inv, sv_profile_long_tra])
+    ## Left join CNAs and SVs with chromosome lengths
     cna_profile = cna_profile.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
+    sv_profile_long = sv_profile_long.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
     ## Update segment positions
     cna_profile['start'] = cna_profile['start'] + cna_profile['cumlength']
     cna_profile['end'] = cna_profile['end'] + cna_profile['cumlength']
+    sv_profile_long['start'] = sv_profile_long['start'] + sv_profile_long['cumlength']
+    sv_profile_long['end'] = sv_profile_long['end'] + sv_profile_long['cumlength']
     ## Remove unnecesary columns
     cna_profile = cna_profile.drop(columns=['cumlength'])
+    sv_profile_long = sv_profile_long.drop(columns=['cumlength'])
     ## Add a group column, one for each segment
     cna_profile['group'] = np.arange(1, len(cna_profile) + 1)
+    sv_profile_long['group'] = np.arange(1, len(sv_profile_long) + 1)
     ## Calculate linewidth
     cna_profile['linewidth'] = np.where(cna_profile['major_cn'] == cna_profile['minor_cn'], 5, 3)
+    ## Pivot longer 'major_cn' and 'minor_cn' columns for CNAs
+    ### CNAs
+    id_vars:list = [col for col in cna_profile.columns if col not in ['major_cn', 'minor_cn']]
+    cna_profile_long = cna_profile.melt(
+        id_vars=id_vars,
+        value_vars=['major_cn', 'minor_cn'],
+        var_name='cn',
+        value_name='y'
+    )
+    ### SVs
+    ymax = max(cna_profile_long['y'])
+    sv_profile_long['overlap'] = sv_profile_long['start'] <= sv_profile_long['end'].shift()
+    overlap = sv_profile_long['overlap'].tolist()
+    for i in range(1, len(overlap)):
+        if overlap[i] and overlap[i - 1]: 
+            overlap[i] = False
+    sv_profile_long['overlap'] = overlap
+    sv_profile_long['y'] = sv_profile_long['svclass'].apply(lambda x: ymax+1.5 if x == 'TRA' else ymax+1) + sv_profile_long['overlap'].apply(lambda x: 0.2 if x else 0)
+    sv_profile_long = sv_profile_long.drop(columns=['overlap'])
     ## Pivot longer 'start' and 'end' columns
-    id_vars:list = [col for col in cna_profile.columns if col not in ['start', 'end']]
-    cna_profile_long:pd.DataFrame = cna_profile.melt(
+    ### CNAs
+    id_vars:list = [col for col in cna_profile_long.columns if col not in ['start', 'end']]
+    cna_profile_long:pd.DataFrame = cna_profile_long.melt(
         id_vars=id_vars,
         value_vars=['start', 'end'],
         var_name='position',
         value_name='x'
     )
     cna_profile_long = cna_profile_long.sort_values('group').reset_index(drop=True)
-    ## Pivot longer 'major_cn' and 'minor_cn' columns
-    id_vars:list = [col for col in cna_profile_long.columns if col not in ['major_cn', 'minor_cn']]
-    cna_profile_long = cna_profile_long.melt(
+    ### SVs
+    id_vars:list = [col for col in sv_profile_long.columns if col not in ['start', 'end']]
+    sv_profile_long_long:pd.DataFrame = sv_profile_long.melt(
         id_vars=id_vars,
-        value_vars=['major_cn', 'minor_cn'],
-        var_name='cn',
-        value_name='y'
+        value_vars=['start', 'end'],
+        var_name='position',
+        value_name='x'
     )
+    sv_profile_long_long = sv_profile_long_long.sort_values('group').reset_index(drop=True)
 
     # Plot
     ## Assign colors
@@ -1902,16 +1944,33 @@ def plot_cnas(cna_profile, output, idx) -> None:
         categories=['Gain', 'Normal', 'Loss'],
         ordered=True
     )
-    color_mapping:dict = {'Gain': "#2a9d8f", 'Normal': "#264653", 'Loss': "#f4a261"}
+    cna_color_mapping:dict = {'Gain': "#2a9d8f", 'Normal': "#264653", 'Loss': "#f4a261"}
+    sv_profile_long_long['svclass'] = pd.Categorical(
+        sv_profile_long_long['svclass'],
+        categories=['h2hINV', 't2tINV', 'TRA'],
+        ordered=True
+    )
+    sv_color_mapping:dict = {'h2hINV': "#FF9898FF", 't2tINV': "#DC3262", 'TRA': "#7A0425"}
     ## Create a figure and axis object
     plt.figure(figsize=(16, 8))
     ## Plot the segments
+    ### CNAs
     for (grp, cn), data in cna_profile_long.groupby(['group', 'cn']):
         plt.plot(
             data['x'], 
             data['y'], 
-            color=color_mapping[data['color'].iloc[0]], 
+            color=cna_color_mapping[data['color'].iloc[0]], 
             linewidth=data['linewidth'].iloc[0],
+            label='_nolegend_',
+            solid_capstyle='butt'
+        )
+    ### SVs
+    for grp, data in sv_profile_long_long.groupby(['group']):
+        plt.plot(
+            data['x'], 
+            data['y'], 
+            color=sv_color_mapping[data['svclass'].iloc[0]], 
+            linewidth=4,
             label='_nolegend_',
             solid_capstyle='butt'
         )
@@ -1921,15 +1980,15 @@ def plot_cnas(cna_profile, output, idx) -> None:
         plt.axvline(x=x, color='gray', linewidth=0.2, linestyle='--')
     ## Calculate ymax for setting y-axis limits and label positions
     ymax:int = cna_profile_long['y'].max()
-    plt.ylim(-0.5, ymax + 1)
+    plt.ylim(-0.5, ymax + 2.2)
     plt.yticks(range(0,ymax+1))
     ## Calculate chromosome label positions
     ### X
     chrom_cumsum_length['x_label_pos'] = chrom_cumsum_length['cumlength'] + chrom_cumsum_length['chrom_size'] / 2
     ### Y
     num_labels:int = len(chrom_cumsum_length)
-    y_positions:list = [ymax + 0.6 if i % 2 == 0 else ymax + 0.4 for i in range(num_labels - 1)]
-    y_positions.append(ymax + 0.6)  # Add the last position
+    y_positions:list = [ymax + 2 if i % 2 == 0 else ymax + 2.3 for i in range(num_labels - 1)]
+    y_positions.append(ymax + 2)  # Add the last position
     chrom_cumsum_length['y_label_pos'] = y_positions
     ## Add chromosome labels
     for _, row in chrom_cumsum_length.iterrows():
@@ -1946,13 +2005,27 @@ def plot_cnas(cna_profile, output, idx) -> None:
     sns.despine(trim=True, left=False, bottom=False)
     ## Set axis labels and subtitle
     ax = plt.gca()
-    plt.title(f'Breast-AdenoCa - Donor{idx}', fontsize=17)
+    plt.title(f'Breast-AdenoCa - Donor{idx}', fontsize=16, y=1.1)
     plt.xlabel('Genome', fontsize=14)
     plt.tick_params(axis='x', which='both', length=0, labelbottom=False)
     plt.ylabel('CNA', fontsize=14)
     plt.tick_params(axis='y', which='both', length=5)
     loc, label = plt.yticks()
     ax.yaxis.set_label_coords(-0.02, np.mean(loc), transform=ax.get_yaxis_transform())
+    ## Adjust legend position
+    handles = [
+        plt.Line2D([0], [0], color="#FF9898", lw=4, linestyle='-', label='h2hINV'),
+        plt.Line2D([0], [0], color="#DC3262", lw=4, linestyle='-', label='t2tINV'),
+        plt.Line2D([0], [0], color="#7A0425", lw=4, linestyle='-', label='TRA')
+    ]
+    plt.legend(
+        handles=handles,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 1.1),
+        ncol=3,
+        fontsize=10,
+        frameon=False
+    )
 
     # Save the plot
     plt.savefig(output)
@@ -2078,7 +2151,7 @@ def check_inv_overlaps(sv_profile) -> pd.DataFrame:
     return(sv_profile)
 
 def check_tra_overlaps(sv_profile) -> pd.DataFrame:
-    #TODO - Tengo que duplicar las entradas para contar ambas duplicaciones, porque antes solo estabamos contando una, y asegurarme de quue luego eliminamos la sv_id correct (tenemos que crearla), similar a como hemos hecho en R
+
     """
     Check if there is any overlap between translocations
     """
@@ -2587,14 +2660,15 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx+1)
             case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
             
+            # Plots
+            if savePlots:
+                plot_cnas(case_cna, case_sv, output.replace(".vcf", "_cna.png"), idx+1) 
+            
             # Convert from hg19 to hg38
             if hg38:
                 case_cna = hg19tohg38(cna=case_cna)
                 case_sv = hg19tohg38(sv=case_sv)
 
-            # Plots
-            if savePlots:
-                plot_cnas(case_cna, output.replace(".vcf", "_cna.png"), idx+1) 
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
