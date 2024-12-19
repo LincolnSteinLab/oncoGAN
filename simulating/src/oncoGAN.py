@@ -2654,11 +2654,9 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
         if simulateCNA_SV:
             # Simulate CNAs
             case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx+1)
-            case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx+1)
-            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
             
             # Plots
             if savePlots:
@@ -2669,6 +2667,9 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
                 case_cna = hg19tohg38(cna=case_cna)
                 case_sv = hg19tohg38(sv=case_sv)
 
+            # Save simulations
+            case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
+            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
