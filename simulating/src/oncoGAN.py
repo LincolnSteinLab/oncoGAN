@@ -1694,19 +1694,18 @@ def rescue_missing_chroms(cnas_df, gender, keys, chrom_size_dict) -> pd.DataFram
     # Detect missing chromosomes
     all_chroms:set = set(cnas_df['chrom'].astype(str))
     simulated_chroms:list = [str(chrom) for chrom in keys if str(chrom) in all_chroms]
+    simulated_indices:dict = {chrom: keys.index(chrom) for chrom in simulated_chroms}
     missing_chroms:list = [str(chrom) for chrom in keys if str(chrom) not in all_chroms]
 
     if gender == 'F' and 'Y' in missing_chroms:
         missing_chroms.remove('Y')
 
-    # Select the next available chromsome as template
+    # Select the next available chromosome as template
     for missing_chrom in missing_chroms:
-        if missing_chrom != 'Y':
-            i:int = 1
-            next_chrom:str = missing_chrom
-            while next_chrom in missing_chroms:
-                next_chrom = keys[keys.index(missing_chrom)+i]
-                i += 1
+        missing_index:int = keys.index(missing_chrom)
+        remaining_simulated = [chrom for chrom, index in simulated_indices.items() if index > missing_index]
+        if remaining_simulated:
+            next_chrom:str = remaining_simulated[0]
         else:
             next_chrom:str = random.choice(simulated_chroms)
         next_chrom_row:pd.DataFrame = pd.DataFrame([cnas_df[cnas_df['chrom'] == next_chrom].iloc[0].copy()])
@@ -1840,7 +1839,7 @@ def assign_cna_plot_color(y) -> str:
     else:
         return "Loss"
     
-def plot_cnas(cna_profile, sv_profile, output, idx) -> None:
+def plot_cnas(cna_profile, sv_profile, tumor, output, idx) -> None:
 
     """
     Plot CNA segments
@@ -2005,7 +2004,7 @@ def plot_cnas(cna_profile, sv_profile, output, idx) -> None:
     sns.despine(trim=True, left=False, bottom=False)
     ## Set axis labels and subtitle
     ax = plt.gca()
-    plt.title(f'Breast-AdenoCa - Donor{idx}', fontsize=16, y=1.1)
+    plt.title(f'{tumor} - Donor{idx}', fontsize=16, y=1.1)
     plt.xlabel('Genome', fontsize=14)
     plt.tick_params(axis='x', which='both', length=0, labelbottom=False)
     plt.ylabel('CNA', fontsize=14)
@@ -2286,27 +2285,31 @@ def find_closest_range(row, cna) -> tuple:
     Find the closest CNA event to each of the simulated SVs
     """
 
+    cna_copy = cna.copy()
+
     # Remove homozygous CNA deletions events
-    cna = cna[cna['major_cn'] != 0]
+    cna_hom_del:list = list(cna_copy.loc[cna_copy['major_cn'] == 0, 'id'])
 
     # Convert positions to a continous range
     keys:list = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y']
     values:list = [0,249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846]
     chrom_cumsum_dict:dict = dict(zip(keys, values))
-    cna['start_continous'] = cna.apply(lambda x: x['start'] + chrom_cumsum_dict[str(x['chrom'])], axis=1)
-    row['start1'] = row['start1'] + chrom_cumsum_dict[str(row['chrom1'])]
-    row['start2'] = row['start2'] + chrom_cumsum_dict[str(row['chrom2'])]
+    cna_copy['start_continous'] = cna_copy.apply(lambda x: x['start'] + chrom_cumsum_dict[str(x['chrom'])], axis=1)
+    row['start1'] = int(row['start1']) + chrom_cumsum_dict[str(row['chrom1'])]
+    row['start2'] = int(row['start2']) + chrom_cumsum_dict[str(row['chrom2'])]
 
     # Find closest start
-    cna['start_distance'] = cna.apply(lambda x: (row['start1'] - x['start_continous']) if (row['start1'] - x['start_continous']) > 0 else float('inf'), axis=1)
-    closest_start:pd.DataFrame = cna.loc[cna['start_distance'].idxmin()]
+    cna_copy['start_distance'] = cna_copy.apply(lambda x: (row['start1'] - x['start_continous']) if (row['start1'] - x['start_continous']) > 0 else float('inf'), axis=1)
+    closest_start:pd.DataFrame = cna_copy.loc[cna_copy['start_distance'].idxmin()]
     closest_start.rename({"id": "start1_id"}, inplace=True)
+    closest_start['start1_id'] = '-' if closest_start['start1_id'] in cna_hom_del else closest_start['start1_id']
     
     # Find closest end
-    cna['end_distance'] = cna.apply(lambda x: (row['start2'] - x['start_continous']) if (row['start2'] - x['start_continous']) > 0 else float('inf'), axis=1)
-    closest_end:pd.DataFrame = cna.loc[cna['end_distance'].idxmin()]
+    cna_copy['end_distance'] = cna_copy.apply(lambda x: (row['start2'] - x['start_continous']) if (row['start2'] - x['start_continous']) > 0 else float('inf'), axis=1)
+    closest_end:pd.DataFrame = cna_copy.loc[cna_copy['end_distance'].idxmin()]
     closest_end.rename({"id": "start2_id"}, inplace=True)
-    
+    closest_end['start2_id'] = '-' if closest_end['start2_id'] in cna_hom_del else closest_end['start2_id']
+
     return(closest_start['start1_id'], closest_end['start2_id'])
 
 def assign_inv_alleles(row, cna) -> str:
@@ -2371,12 +2374,12 @@ def assign_tra_alleles_len(row, cna) -> str:
     cna = cna[cna['chrom'].isin([row['chrom1'], row['chrom2']])]
     ## In 20% of TRA create a more complex event
     if np.random.rand() < 0.2:
-        try:
-            cn_alt_id:str = np.random.choice(['start1_id', 'start2_id'])
-            cn_norm_id:str = 'start1_id' if cn_alt == 'start2_id' else 'start2_id'
+        cn_alt_id:str = np.random.choice(['start1_id', 'start2_id'])
+        cn_norm_id:str = 'start1_id' if cn_alt_id == 'start2_id' else 'start2_id'
 
-            cna_alt_id_value:str = f'cna{int(row[cn_alt_id].replace("cna", "")) + 1}'
-            cna_norm_id_value:str = row[cn_norm_id]
+        cna_alt_id_value:str = f'cna{int(row[cn_alt_id].replace("cna", "")) + 1}'
+        cna_norm_id_value:str = row[cn_norm_id]
+        if cna_alt_id_value in cna['id'] and cna_norm_id_value in cna['id']:
             if cn_alt_id == 'start1_id':
                 cn1:pd.Series = cna.loc[cna['id'] == cna_alt_id_value].squeeze()
             else:
@@ -2386,7 +2389,7 @@ def assign_tra_alleles_len(row, cna) -> str:
                 cn1:pd.Series = cna.loc[cna['id'] == cna_norm_id_value].squeeze()
             else:
                 cn2:pd.Series = cna.loc[cna['id'] == cna_norm_id_value].squeeze()
-        except:
+        else:
             # In case the next CNA event is not located in the same chromosome
             cn1:pd.Series = cna.loc[cna['id'] == row['start1_id']].squeeze()
             cn2:pd.Series = cna.loc[cna['id'] == row['start2_id']].squeeze()
@@ -2426,10 +2429,11 @@ def assign_tra(cna, sv, sv_deldup_inv) -> pd.DataFrame:
     Assign simulated translocations to CNA events
     """
 
-    # Assign the inversions based on CNA events
+    # Assign the translocations based on CNA events
     sv_tra:pd.DataFrame = sv[sv['svclass']=='TRA']
     sv_tra = sv_tra.reset_index(drop=True)
     sv_tra[['start1_id', 'start2_id']] = sv_tra.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
+    sv_tra = sv_tra[(sv_tra['start1_id'] != '-') & (sv_tra['start2_id'] != '-')].reset_index(drop=True)
     sv_tra = sv_tra.apply(lambda row: assign_tra_alleles_len(row, cna), axis=1)
     sv_tra = check_tra_overlaps(sv_tra)
 
@@ -2449,10 +2453,12 @@ def align_cna_sv(cna, sv) -> pd.DataFrame:
     sv_assigned:pd.DataFrame = cna2sv_dupdel(cna)
 
     # Assign simulated INV based on CNA events
-    sv_assigned = assign_inv(cna, sv, sv_assigned)
+    if not sv[sv['svclass'].isin(['h2hINV', 't2tINV'])].empty:
+        sv_assigned = assign_inv(cna, sv, sv_assigned)
 
     # Assign simulated TRA based on CNA events
-    sv_assigned = assign_tra(cna, sv, sv_assigned)
+    if not sv[sv['svclass']=='TRA'].empty:
+        sv_assigned = assign_tra(cna, sv, sv_assigned)
 
     return(sv_assigned)
 
@@ -2492,6 +2498,10 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
     # Add donor and tumor columns
     case_sv["donor_id"] = f"sim{idx}"
     case_sv["tumor"] = tumor
+    try:
+        case_sv = case_sv.drop(columns=['sv_id'])
+    except KeyError:
+        pass
 
     return(case_sv)
 
@@ -2614,7 +2624,6 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             # Simulate driver mutations to each donor
             case_drivers:pd.Series = simulate_drivers(drivers_tumor, driversModel)
 
-
             # Generate the mutations
             muts, case_muts = simulate_mutations(mutModel, muts, nMut, case_counts, drivers_tumor)
             
@@ -2631,7 +2640,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             case_muts = assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender, cpus)
 
             # Generate and assign the VAF to the mutations
-            mut_vafs:list = simulate_mut_vafs(tumor, case_rank, nMut) #TODO - Adjust VAF for sexual mutations
+            mut_vafs:list = simulate_mut_vafs(tumor, case_rank, nMut)
             case_muts['vaf'] = mut_vafs
             drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
 
@@ -2660,7 +2669,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             
             # Plots
             if savePlots:
-                plot_cnas(case_cna, case_sv, output.replace(".vcf", "_cna.png"), idx+1) 
+                plot_cnas(case_cna, case_sv, tumor, output.replace(".vcf", "_cna.png"), idx+1) 
             
             # Convert from hg19 to hg38
             if hg38:
