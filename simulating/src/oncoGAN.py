@@ -2354,9 +2354,10 @@ def assign_inv(cna, sv, sv_deldup) -> pd.DataFrame:
     sv_inv = sv_inv.reset_index(drop=True)
     sv_inv = check_inv_overlaps(sv_inv)
     sv_inv[['start1_id', 'start2_id']] = sv_inv.apply(lambda row: find_closest_range(row, cna), axis=1, result_type='expand')
+    sv_inv = sv_inv[(sv_inv['start1_id'] != '-') & (sv_inv['start2_id'] != '-')].reset_index(drop=True)
     sv_inv[['id', 'allele', 'keep']] = sv_inv.apply(lambda row: assign_inv_alleles(row, cna), axis=1, result_type='expand')
-    sv_inv = sv_inv[sv_inv['keep']]
-    sv_inv = sv_inv.drop(columns=['start1_id', 'start2_id', 'keep']).reset_index(drop=True)
+    sv_inv = sv_inv[sv_inv['keep']].reset_index(drop=True)
+    sv_inv = sv_inv.drop(columns=['start1_id', 'start2_id', 'keep'])
     
     # Concatenate del, dup and inv
     sv_deldup_inv:pd.DataFrame = pd.concat([sv_deldup, sv_inv], ignore_index = True)
