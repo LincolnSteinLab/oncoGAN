@@ -19,7 +19,7 @@ from liftover import ChainFile
 from tqdm import tqdm
 from pyfaidx import Fasta
 
-VERSION = "0.1"
+VERSION = "0.2"
 
 def tumor_models(tumor, device) -> list:
 
