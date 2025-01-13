@@ -118,12 +118,12 @@ def cna_sv_models(device) -> list:
     Get the CNA and SV models
     """
     
-    cna_sv_countModel = torch.load("/oncoGAN/trained_models/cna_sv/counts/CNA_SV_counts.pkl", map_location=device)
-    cnaModel = torch.load("/oncoGAN/trained_models/cna_sv/cna/CNA_model.pkl", map_location=device)
+    cna_sv_countModel = torch.load("/oncoGAN/trained_models/cna_sv/CNA_SV_counts.pkl", map_location=device)
+    cnaModel = torch.load("/oncoGAN/trained_models/cna_sv/CNA_model.pkl", map_location=device)
     svModel:dict = {}
-    with open("/oncoGAN/trained_models/cna_sv/sv_positions/SV_positions.pkl", 'rb') as f:
+    with open("/oncoGAN/trained_models/cna_sv/SV_positions.pkl", 'rb') as f:
         svModel['pos'] = pickle.load(f)
-    svModel['sv'] = torch.load("/oncoGAN/trained_models/cna_sv/sv/SV_model.pkl", map_location=device)
+    svModel['sv'] = torch.load("/oncoGAN/trained_models/cna_sv/SV_model.pkl", map_location=device)
 
     return(cna_sv_countModel, cnaModel, svModel)
 
