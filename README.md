@@ -1,8 +1,9 @@
-[![license](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/LincolnSteinLab/oncoGAN/tree/main/LICENSE) ![version](https://img.shields.io/badge/version-0.1-blue)
+[![license](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/LincolnSteinLab/oncoGAN/tree/main/LICENSE) ![train_version](https://badgen.net/badge/train_version/0.2/blue) ![simulate_version](https://badgen.net/badge/simulate_version/0.2/blue)
+ [![zenodo](https://img.shields.io/badge/docs-zenodo-green)](https://zenodo.org/records/13946727) [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.13946726.svg)](https://doi.org/10.5281/zenodo.13946726) [![Model on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/model-on-hf-sm-dark.svg)](https://huggingface.co/anderdnavarro/OncoGAN) [![Dataset on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-sm-dark.svg)](https://huggingface.co/collections/anderdnavarro/oncogan-67110940dcbafe5f1aa2d524)
 
 # OncoGAN
 
-A pipeline that accurately simulates high quality publicly cancer genomes (VCFs) for eight different tumor types: Breast-AdenoCa, CNS-PiloAstro, Eso-AdenoCa, Kidney-RCC, Liver-HCC, Lymph-CLL, Panc-Endocrine and Prost-AdenoCa. OncoGAN offers a solution to current challenges in data accessibility and privacy while also serving as a powerful tool for enhancing algorithm development and benchmarking.
+A pipeline that accurately simulates high quality publicly cancer genomes (VCFs, CNAs and SVs) for eight different tumor types: Breast-AdenoCa, CNS-PiloAstro, Eso-AdenoCa, Kidney-RCC, Liver-HCC, Lymph-CLL, Panc-Endocrine and Prost-AdenoCa. OncoGAN offers a solution to current challenges in data accessibility and privacy while also serving as a powerful tool for enhancing algorithm development and benchmarking.
 
 ## Index
 
@@ -34,10 +35,10 @@ If you don't have docker already installed in your system, please follow these [
 
 ```bash
 # Training
-docker pull oicr/oncogan:training_v0.1
+docker pull oicr/oncogan:training_v0.2
 
 # Simulating
-docker pull oicr/oncogan:simulating_v0.1
+docker pull oicr/oncogan:simulating_v0.2
 
 # DeepTumour
 docker pull oicr/oncogan:deeptumour
@@ -49,10 +50,10 @@ If you don't have singularity already installed in your system, please follow th
 
 ```bash
 # Training
-singularity build oncogan_training_v0.1.sif docker://oicr/oncogan:training_v0.1
+singularity build oncogan_training_v0.2.sif docker://oicr/oncogan:training_v0.2
 
 # Simulating
-singularity build oncogan_simulating_v0.1.sif docker://oicr/oncogan:simulating_v0.1
+singularity build oncogan_simulating_v0.2.sif docker://oicr/oncogan:simulating_v0.2
 
 # DeepTumour
 singularity build deeptumour.sif docker://oicr/oncogan:deeptumour
@@ -69,7 +70,7 @@ OncoGAN needs two external inputs to simulate new samples:
 1. The directory with OncoGAN models downloaded previously
 2. **hg19 fasta** reference genome without the *chr* prefix 
 
-The output is a VCF file per donor. Since the PCAWG dataset used for training refers to the hg19 version of the genome, the new mutations are also aligned to that version. The integrated `LiftOver` version can be used to swicht to hg38.
+The output is a VCF file (mutations), two TSV files (CNAs and SVs) and a PNG (CNA+SV plot) per donor. Since the PCAWG dataset used for training refers to the hg19 version of the genome, the new mutations are also aligned to that version. The integrated `LiftOver` version can be used to swicht to hg38.
 
 ```bash
 # Docker command
@@ -77,14 +78,14 @@ docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -v /PATH_TO_HG19_DIR/:/reference \
            -v /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-           -it oicr/oncogan:simulating_v0.1 \
+           -it oicr/oncogan:simulating_v0.2 \
            vcfGANerator -n 1 --tumor Breast-AdenoCa -r /reference/hs37d5.fa [--hg38]
 
 # Singularity command
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_HG19_DIR/:/reference \
             -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-            /PATH_TO/oncogan_simulating_v0.1.sif launcher.py \
+            /PATH_TO/oncogan_simulating_v0.2.sif launcher.py \
             vcfGANerator -n 1 --tumor Breast-AdenoCa -r /reference/hs37d5.fa [--hg38]
 ```
 
@@ -96,18 +97,22 @@ vcfGANerator --help
 # Command to simulate mutations (VCF) for different tumor types using a GAN model
 
 # Options:
-#   -@, --cpus INTEGER    Number of CPUs to use  [default: 1]
-#   --tumor TEXT          Tumor type to be simulated. Run 'availTumors'
-#                         subcommand to check the list of available tumors that
-#                         can be simulated  [required]
-#   -n, --nCases INTEGER  Number of cases to simulate  [default: 1]
-#   -r, --refGenome PATH  hg19 reference genome in fasta format  [required]
-#   --prefix TEXT         Prefix to name the output. If not, '--tumor' option is
-#                         used as prefix
-#   --outDir DIRECTORY    Directory where save the simulations. Default is the
-#                         current directory
-#   --hg38                Transform the mutations to hg38
-#   --help                Show this message and exit
+#   -@, --cpus INTEGER      Number of CPUs to use  [default: 1]
+#   --tumor TEXT            Tumor type to be simulated. Run 'availTumors'
+#                           subcommand to check the list of available tumors that
+#                           can be simulated  [required]
+#   -n, --nCases INTEGER    Number of cases to simulate  [default: 1]
+#   -r, --refGenome PATH    hg19 reference genome in fasta format  [required]
+#   --prefix TEXT           Prefix to name the output. If not, '--tumor' option is
+#                           used as prefix
+#   --outDir DIRECTORY      Directory where save the simulations. Default is the
+#                           current directory
+#   --hg38                  Transform the mutations to hg38
+#   --mut / --no-mut        Simulate mutations  [default: mut]
+#   --CNA-SV / --no-CNA-SV  Simulate CNA and SV events  [default: CNA-SV]
+#   --plots / --no-plots    Save plots  [default: plots]
+#   --version               Show the version and exit
+#   --help                  Show this message and exit
 ```
 
 Among all the options offered by docker (`docker run --help`), we recommend:
@@ -126,11 +131,11 @@ For singularity, the `-H` and `-B` options are analogous to `-v` docker option.
 List of available tumors:
 
 ```bash
-docker run --rm -it oicr/oncogan:simulating_v0.1 availTumors
+docker run --rm -it oicr/oncogan:simulating_v0.2 availTumors
 
 # or 
 
-singularity exec /PATH_TO/oncogan_simulating_v0.1.sif launcher.py availTumors
+singularity exec /PATH_TO/oncogan_simulating_v0.2.sif launcher.py availTumors
 
 # This is the list of available tumor types that can be simulated using OncoGAN:
 # Breast-AdenoCa          CNS-PiloAstro           Eso-AdenoCa             Kidney-RCC              
@@ -143,7 +148,7 @@ Files used to train OncoGAN models can be found [here](). The directory containi
 
 We used two different training approaches: 
 
-- [CTAB-GAN+](https://github.com/Team-TUD/CTAB-GAN-Plus) -> To train *donor characteristics*, *drivers* and *mutational signatures* 
+- [CTAB-GAN+](https://github.com/Team-TUD/CTAB-GAN-Plus) -> To train *donor characteristics*, *drivers*, *mutational signatures* and *CNA and SV features* 
 - [CTGAN + TVAE](https://docs.sdv.dev/sdv) -> To train *genomic positions*
 
 ### Baseline command
@@ -155,45 +160,55 @@ docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -v /PATH_TO_TRAINING_FILES/:/inputs \
            -p 8890:8890 \ #Only for CTGAN/TVAE models
-           -it oicr/oncogan:training_v0.1 --help
+           -it oicr/oncogan:training_v0.2 --help
 
 # or
 
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_TRAINING_FILES/:/inputs \
-            /PATH_TO/oncogan_training_v0.1.sif launcher.py --help
+            /PATH_TO/oncogan_training_v0.2.sif launcher.py --help
 
 # Options:
 #   --help  Show this message and exit.
 
 # Commands:
 #   jupyter              Launches a jupyter lab instance
-#   testHyperparameters  Test hyperparameters for counts/drivers CTABGAN models
-#   trainCounts          Train a counts CTABGAN model
-#   trainDrivers         Train a drivers CTABGAN model
-#   trainMutations       Train a mutations CTABGAN model
-#   useModel             Use a driver/count CTABGAN model to generate synthetic data
+#   testHyperparameters  Test hyperparameters for counts/drivers CTABGAN...
+#   trainCNA             Train a CTABGAN model for CNAs
+#   trainCounts          Train a CTABGAN model for donor characteristics
+#   trainDrivers         Train a CTABGAN model for driver features
+#   trainMutations       Train a CTABGAN model for mutations
+#   trainSV              Train a CTABGAN model for SVs
+#   useModel             Use a CTABGAN model to generate synthetic data
 ```
 
 ### CTAB-GAN+ models
 
-#### `trainCounts` / `trainDrivers` / `trainMutations`
+#### `trainCounts` / `trainDrivers` / `trainMutations` / `trainCNA` / `trainSV` 
 
-Commands to train *donor characteristics*, *drivers* and *mutational signatures* models, respectively. The output will be a model and a simulated file with the same format and shape as the training file.
+Commands to train *donor characteristics*, *drivers*, *mutational signatures* and *CNA and SV features* models, respectively. The output will be a model and a simulated file with the same format and shape as the training file. All scripts have a very similar usage:
 
 ```bash
 # Baseline command +
-trainCounts/trainDrivers/trainMutations --help
+trainCounts --help
 
 # Options:
-#   --csv PATH            CSV file with the mutations used to train the model [required]
-#   --prefix TEXT         Prefix to use to save the model [required]
-#   --outdir DIRECTORY    Directory where save the model [default: /home]
-#   --epochs INTEGER      Number of epochs
-#   --batch_size INTEGER  Batch size
-#   --test_ratio FLOAT    Test ratio
-#   --lr FLOAT            Learning rate
-#   --help                Show this message and exit
+#   --csv PATH                  CSV file with the counts used to train the model
+#                               [required]
+#   --prefix TEXT               Prefix to use to save the model  [required]
+#   --outdir DIRECTORY          Directory where save the model  [default: /home]
+#   --epochs INTEGER            Number of epochs  [default: 100]
+#   --batch_size INTEGER        Batch size  [default: 20]
+#   --test_ratio FLOAT          Test ratio  [default: 0.3]
+#   --lr FLOAT                  Learning rate  [default: 0.0002]
+#   --categorical_columns TEXT  Categorical columns. Comma separated with no
+#                               space (e.g. x,y,z)
+#   --log_columns TEXT          Log columns. Comma separated with no space (e.g.
+#                               x,y,z)
+#   --integer_columns TEXT      Integer columns. Comma separated with no space
+#                               (e.g. x,y,z)
+#   --no-tqdm                   Disable tqdm progress bar
+#   --help                      Show this message and exit
 ```
 
 #### `testHyperparameters`
@@ -217,6 +232,12 @@ testHyperparameters --help
 #   --batch_size <INTEGER INTEGER INTEGER>...
 #                                   A list with a batch_size range: start stop step
 #   --lr <FLOAT FLOAT FLOAT>...     A list with a learning rate range: start stop step
+#   --categorical_columns TEXT      Categorical columns. Comma separated with no
+#                                   space (e.g. x,y,z)
+#   --log_columns TEXT              Log columns. Comma separated with no space
+#                                   (e.g. x,y,z)
+#   --integer_columns TEXT          Integer columns. Comma separated with no
+#                                   space (e.g. x,y,z)
 #   --debug                         Greater verbosity for debugging purposes
 #   --help                          Show this message and exit
 ```
@@ -225,7 +246,7 @@ An example of how to specify the range of the hyperparameters to test would be:
 
 ```bash
 # Baseline command +
-testHyperparameters --cpu 1 --function counts --csv /inputs/counts/Breast-AdenoCa_counts.csv --prefix Breast-AdenoCa --epochs 100 500 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001
+testHyperparameters --cpu 1 --function counts --csv /inputs/counts/Breast-AdenoCa_counts.csv --prefix Breast-AdenoCa --epochs 100 500 20 --batch_size 10 30 5 --lr 0.001 0.01 0.001 --integer_columns DEL,DNP,INS,TNP,SBS1,SBS2,SBS3,SBS5,SBS8,SBS13,SBS18
 ```
 
 #### `useModel`
