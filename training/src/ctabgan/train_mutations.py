@@ -51,7 +51,7 @@ cuda.empty_cache()
 def trainMutations(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
 
     """
-    Train a mutations CTABGAN model
+    Train a CTABGAN model for mutations
     """
       
     # Initializing the synthesizer object and specifying input parameters

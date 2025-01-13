@@ -52,7 +52,7 @@ cuda.empty_cache()
 def trainSV(csv, prefix, outdir, epochs, batch_size, test_ratio, lr):
 
     """
-    Train a CTABGAN model for artifacts
+    Train a CTABGAN model for SVs
     """
     
     # Get training file information

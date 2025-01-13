@@ -5,7 +5,7 @@ import click
 import subprocess
 from ctabgan.train_counts import trainCountsClick
 from ctabgan.train_mutations import trainMutations
-from ctabgan.train_artifacts import trainArtifacts
+# from ctabgan.train_artifacts import trainArtifacts
 from ctabgan.train_cna import trainCNA
 from ctabgan.train_sv import trainSV
 from ctabgan.train_drivers import trainDriversClick
@@ -32,7 +32,7 @@ def jupyter(port):
 
 cli.add_command(jupyter)
 cli.add_command(testHyperparameters)
-cli.add_command(trainArtifacts)
+# cli.add_command(trainArtifacts)
 cli.add_command(trainCNA)
 cli.add_command(trainSV)
 cli.add_command(trainCountsClick)

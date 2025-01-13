@@ -64,7 +64,7 @@ cuda.empty_cache()
 def trainCNA(csv, prefix, outdir, epochs, batch_size, test_ratio, lr, categorical_columns, log_columns, integer_columns):
 
     """
-    Train a CTABGAN model for artifacts
+    Train a CTABGAN model for CNAs
     """
       
     # Parse columns type
