@@ -2558,19 +2558,19 @@ def availTumors():
               is_flag=True,
               required=False,
               default=True,
-              show_default=False,
+              show_default=True,
               help="Simulate mutations")
 @click.option("--CNA-SV/--no-CNA-SV", "simulateCNA_SV",
               is_flag=True,
               required=False,
               default=True,
-              show_default=False,
+              show_default=True,
               help="Simulate CNA and SV events")
 @click.option("--plots/--no-plots", "savePlots",
               is_flag=True,
               required=False,
               default=True,
-              show_default=False,
+              show_default=True,
               help="Save plots")
 @click.version_option(version=VERSION,
                       package_name="OncoGAN",
