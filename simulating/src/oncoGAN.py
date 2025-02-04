@@ -1190,9 +1190,14 @@ def get_sequence(positions, fasta, posQueue=None) -> pd.DataFrame:
     """
     Function to get the DNA sequence of each position
     """
+
+    chr_prefix:bool = True if 'chr1' in fasta.keys() else False
     
     for i, row in positions.iterrows():
-        chrom:str = str(row['chrom'])
+        if chr_prefix:
+            chrom:str = f"chr{str(row['chrom'])}"
+        else:
+            chrom:str = str(row['chrom'])
         start:int = int(row['start'])
         end:int = int(row['end'])
         sequence:str = fasta[chrom][start:end].seq
@@ -1460,6 +1465,8 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_
     """
     Include driver mutations in the vcf with passenger mutations
     """
+    
+    chr_prefix:bool = True if 'chr1' in fasta.keys() else False
 
     # Select drivers from PCAWG donors
     drivers_counts = drivers_counts[drivers_counts != 0]
@@ -1483,11 +1490,17 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_
     for _,mut in selected_drivers.iterrows():
         if mut['mut'] == 'DEL':
             mut['start'] = mut['start'] - 1
-            prev_base:str = fasta[str(mut['chrom'])][mut['start']-1:mut['start']].seq
+            if chr_prefix:
+                prev_base:str = fasta[f"chr{str(mut['chrom'])}"][mut['start']-1:mut['start']].seq
+            else:
+                prev_base:str = fasta[str(mut['chrom'])][mut['start']-1:mut['start']].seq
             mut['ref'] = f"{prev_base}{mut['ref']}"
             mut['alt'] = prev_base
         elif mut['mut'] == 'INS':
-            base:str = fasta[mut['chrom']][mut['start']-1:mut['start']].seq
+            if chr_prefix:
+                base:str = fasta[f"chr{mut['chrom']}"][mut['start']-1:mut['start']].seq
+            else:
+                base:str = fasta[mut['chrom']][mut['start']-1:mut['start']].seq
             mut['ref'] = base
             mut['alt'] = f"{base}{mut['alt']}"
         else:
@@ -1512,6 +1525,8 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
     """
     Convert the pandas DataFrame into a VCF
     """
+
+    chr_prefix:bool = True if 'chr1' in fasta.keys() else False
 
     # Create the appropiate row for each type of mutation
     new_ref_list:list = []
@@ -1543,7 +1558,10 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
             continue
         elif mut_type == "DEL":
             ## Get the region that have to be deleted from fasta
-            ctx = fasta[chrom][pos:pos+abs(mut_len)].seq
+            if chr_prefix:
+                ctx = fasta[f"chr{chrom}"][pos:pos+abs(mut_len)].seq
+            else:
+                ctx = fasta[chrom][pos:pos+abs(mut_len)].seq
             new_ref_list.append(ref[1]+ctx)
             new_alt_list.append(ref[1])
             mut_sig_list.append(mut_type)
