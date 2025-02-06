@@ -72,6 +72,8 @@ OncoGAN needs two external inputs to simulate new samples:
 
 The output is a VCF file (mutations), two TSV files (CNAs and SVs) and a PNG (CNA+SV plot) per donor. Since the PCAWG dataset used for training refers to the hg19 version of the genome, the new mutations are also aligned to that version. The integrated `LiftOver` version can be used to swicht to hg38.
 
+### Tumors with real profiles
+
 ```bash
 # Docker command
 docker run --rm -u $(id -u):$(id -g) \
@@ -94,7 +96,7 @@ The options for the `vcfGANerator` function are:
 ```bash
 vcfGANerator --help
 
-# Command to simulate mutations (VCF) for different tumor types using a GAN model
+# Command to simulate mutations (VCF), CNAs and SVs for different tumor types using a GAN model
 
 # Options:
 #   -@, --cpus INTEGER      Number of CPUs to use  [default: 1]
@@ -105,6 +107,50 @@ vcfGANerator --help
 #   -r, --refGenome PATH    hg19 reference genome in fasta format  [required]
 #   --prefix TEXT           Prefix to name the output. If not, '--tumor' option is
 #                           used as prefix
+#   --outDir DIRECTORY      Directory where save the simulations. Default is the
+#                           current directory
+#   --hg38                  Transform the mutations to hg38
+#   --mut / --no-mut        Simulate mutations  [default: mut]
+#   --CNA-SV / --no-CNA-SV  Simulate CNA and SV events  [default: CNA-SV]
+#   --plots / --no-plots    Save plots  [default: plots]
+#   --version               Show the version and exit
+#   --help                  Show this message and exit
+```
+
+### Tumors with custom profiles
+
+To generate tumors with custom profiles, users can use the [template](simulating/template_custom_simulation.csv), which contains a list of possible mutation types and signatures to simulate. If no CNA-SV are required, the `cna-sv profile` can be set to `-`.
+
+```bash
+# Docker command
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /PATH_TO_HG19_DIR/:/reference \
+           -v /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
+           -it oicr/oncogan:simulating_v0.2 \
+           vcfGANerator-custom --template /home/template_custom_simulation.csv -r /reference/hs37d5.fa [--hg38]
+
+# Singularity command
+singularity exec -H ${pwd}:/home \
+            -B /PATH_TO_HG19_DIR/:/reference \
+            -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
+            /PATH_TO/oncogan_simulating_v0.2.sif launcher.py \
+            vcfGANerator-custom --template /home/template_custom_simulation.csv -r /reference/hs37d5.fa [--hg38]
+```
+
+The options for the `vcfGANerator-custom` function are:
+
+```bash
+vcfGANerator-custom --help
+
+# Command to simulate mutations (VCF), CNAs and SVs for personalized tumors using a GAN model
+
+# Options:
+#   -@, --cpus INTEGER      Number of CPUs to use  [default: 1]
+#   --template PATH         File in CSV format with the number of each type of
+#                           mutation to simulate for each donor (template
+#                           available on GitHub)  [required]
+#   -r, --refGenome PATH    hg19 reference genome in fasta format  [required]
 #   --outDir DIRECTORY      Directory where save the simulations. Default is the
 #                           current directory
 #   --hg38                  Transform the mutations to hg38
