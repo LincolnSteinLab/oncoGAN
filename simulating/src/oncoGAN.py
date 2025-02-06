@@ -21,11 +21,67 @@ from pyfaidx import Fasta
 
 VERSION = "0.2"
 
-def tumor_models(tumor, device) -> list:
+sig2tum:dict = {
+    "DNP": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "TNP": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "INS": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "DEL": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "SBS1": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "SBS10c": ["Eso-AdenoCa"],
+    "SBS12": ["Liver-HCC"],
+    "SBS13": ["Breast-AdenoCa","Eso-AdenoCa","Panc-Endocrine"],
+    "SBS16": ["Liver-HCC"],
+    "SBS17a": ["Eso-AdenoCa"],
+    "SBS17b": ["Eso-AdenoCa"],
+    "SBS18": ["Breast-AdenoCa","Eso-AdenoCa"],
+    "SBS19": ["CNS-PiloAstro","Panc-Endocrine"],
+    "SBS2": ["Breast-AdenoCa","Eso-AdenoCa","Panc-Endocrine"],
+    "SBS22": ["Kidney-RCC"],
+    "SBS23": ["CNS-PiloAstro"],
+    "SBS28": ["Eso-AdenoCa"],
+    "SBS3": ["Breast-AdenoCa"],
+    "SBS30": ["Panc-Endocrine"],
+    "SBS35": ["Liver-HCC"],
+    "SBS36": ["Panc-Endocrine"],
+    "SBS37": ["Prost-AdenoCA"],
+    "SBS4": ["Liver-HCC"],
+    "SBS40": ["Kidney-RCC","Liver-HCC","Prost-AdenoCA"],
+    "SBS5": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "SBS8": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
+    "SBS9": ["Lymph-CLL"]
+}
+
+def tumor_models(tumor, device, counts_only=False, drivers_only=False, no_drivers=False) -> list:
 
     """
     Get the specific models for the selected tumor type
     """
+
+    # Drivers model and files
+    if tumor == "Lymph-CLL":
+        driversModel:dict = {}
+        driversModel['MUT']:dict = {}
+        driversModel['MUT']['model'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_drivers.pkl", map_location=device)
+        driversModel['MUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_driver_mutations.csv")
+        driversModel['UNMUT']:dict = {}
+        driversModel['UNMUT']['model']:dict = {}
+        driversModel['UNMUT']['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL1_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL2_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['model']['x3'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL3_drivers.pkl", map_location=device)
+        driversModel['UNMUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
+    elif tumor == "Panc-Endocrine":
+        driversModel:dict = {}
+        driversModel['model']:dict = {}
+        driversModel['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine1_drivers.pkl", map_location=device)
+        driversModel['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine2_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+    else:
+        driversModel:dict = {}
+        driversModel['model'] = torch.load(f"/oncoGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
+        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
+    
+    if drivers_only:
+        return(driversModel)
 
     # Counts model
     if tumor == "Breast-AdenoCa":
@@ -61,6 +117,15 @@ def tumor_models(tumor, device) -> list:
         countModel['x2'] = torch.load(f"/oncoGAN/trained_models/counts/Panc-Endocrine2_counts.pkl", map_location=device)
     elif tumor == "Prost-AdenoCA":
         countModel = torch.load(f"/oncoGAN/trained_models/counts/Prost-AdenoCA_counts.pkl", map_location=device)
+
+    # Counts corrections
+    countsCorr:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_correction_rates.csv")
+
+    # Counts exclusions
+    countsEx:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_exclusions.csv")
+
+    if counts_only:
+        return(countModel, countsCorr, countsEx)
     
     # Mutations model
     if tumor == "Lymph-CLL":
@@ -69,29 +134,6 @@ def tumor_models(tumor, device) -> list:
         mutModel['UNMUT'] = torch.load(f"/oncoGAN/trained_models/mutations/Lymph-CLL_mutations.pkl", map_location=device)
     else:
         mutModel = torch.load(f"/oncoGAN/trained_models/mutations/{tumor}_mutations.pkl", map_location=device)
-
-    # Drivers model and files
-    if tumor == "Lymph-CLL":
-        driversModel:dict = {}
-        driversModel['MUT']:dict = {}
-        driversModel['MUT']['model'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_drivers.pkl", map_location=device)
-        driversModel['MUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-MCLL_driver_mutations.csv")
-        driversModel['UNMUT']:dict = {}
-        driversModel['UNMUT']['model']:dict = {}
-        driversModel['UNMUT']['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL1_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL2_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['model']['x3'] = torch.load(f"/oncoGAN/trained_models/drivers/Lymph-UCLL3_drivers.pkl", map_location=device)
-        driversModel['UNMUT']['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/Lymph-UCLL_driver_mutations.csv")
-    elif tumor == "Panc-Endocrine":
-        driversModel:dict = {}
-        driversModel['model']:dict = {}
-        driversModel['model']['x1'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine1_drivers.pkl", map_location=device)
-        driversModel['model']['x2'] = torch.load(f"/oncoGAN/trained_models/drivers/Panc-Endocrine2_drivers.pkl", map_location=device)
-        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
-    else:
-        driversModel:dict = {}
-        driversModel['model'] = torch.load(f"/oncoGAN/trained_models/drivers/{tumor}_drivers.pkl", map_location=device)
-        driversModel['mutations'] = pd.read_csv(f"/oncoGAN/trained_models/drivers/{tumor}_driver_mutations.csv")
 
     # Positions model
     if tumor == "Lymph-CLL":
@@ -104,13 +146,10 @@ def tumor_models(tumor, device) -> list:
         with open(f"/oncoGAN/trained_models/positions/{tumor}_positions.pkl", 'rb') as f:
            posModel = pickle.load(f)
 
-    # Counts corrections
-    countsCorr:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_correction_rates.csv")
-
-    # Counts exclusions
-    countsEx:pd.DataFrame = pd.read_csv(f"/oncoGAN/trained_models/counts/counts_exclusions.csv")
-
-    return(countModel, mutModel, posModel, driversModel, countsCorr, countsEx)
+    if no_drivers:
+        return(countModel, mutModel, posModel, countsCorr, countsEx)
+    else:
+        return(countModel, mutModel, posModel, driversModel, countsCorr, countsEx)
 
 def cna_sv_models(device) -> list:
 
@@ -127,13 +166,15 @@ def cna_sv_models(device) -> list:
 
     return(cna_sv_countModel, cnaModel, svModel)
 
-def out_path(outDir, prefix, tumor, n) -> click.Path:
+def out_path(outDir, tumor, prefix=None, n=0, custom=False) -> click.Path:
 
     """
     Get the absolute path and name for the outputs
     """
 
-    if prefix is not None:
+    if custom:
+        output:click.Path = f"{outDir}/{prefix}.vcf"
+    elif prefix is not None:
         output:click.Path = f"{outDir}/{prefix}_sim{n}.vcf"
     else:
         output:click.Path = f"{outDir}/{tumor}_sim{n}.vcf"
@@ -1070,11 +1111,11 @@ def simulate_mutations(mutSynthesizer, muts, nMut, case_counts, tumor) -> pd.Dat
         oriVSsim_types[oriVSsim_types < 0] = 0
         ## Break the loop if it is taking too long
         if rounds == 20:
-            if oriVSsim_types['DNP'] > 0:
+            if 'DNP' in oriVSsim_types.index and oriVSsim_types['DNP'] > 0:
                 dnp_muts = manually_simulate_dnp_tnp(mutSynthesizer, oriVSsim_types['DNP'], 'DNP', tumor)
                 muts = pd.concat([muts,dnp_muts])
                 oriVSsim_types['DNP'] = 0
-            if oriVSsim_types['TNP'] > 0:
+            if 'TNP' in oriVSsim_types.index and oriVSsim_types['TNP'] > 0:
                 tnp_muts = manually_simulate_dnp_tnp(mutSynthesizer, oriVSsim_types['TNP'], 'TNP', tumor)
                 muts = pd.concat([muts,tnp_muts])
                 oriVSsim_types['TNP'] = 0
@@ -1385,7 +1426,7 @@ def assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender
 
     # posModel selection
     if tumor == "Lymph-CLL":
-        if case_counts['SBS9'] > 0: #AID signature
+        if 'SBS9' in case_counts.index and case_counts['SBS9'] > 0: #AID signature
             posModel = posModel['MUT']
         else:
             posModel = posModel['UNMUT']
@@ -1460,7 +1501,7 @@ def chrom2str(chrom) -> str:
     else:
         return str(chrom)
 
-def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID) -> pd.DataFrame:
+def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, idx=0, prefix=None) -> pd.DataFrame:
 
     """
     Include driver mutations in the vcf with passenger mutations
@@ -1507,7 +1548,11 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_
             pass
 
     # Reorganize columns
-    selected_drivers['ID'] = [f"sim{donorID+1}"] * drivers_counts.sum()
+    if prefix == None:
+        id_list:list = [f"sim{idx+1}"] * drivers_counts.sum()
+    else:
+        id_list:list = [prefix] * drivers_counts.sum()
+    selected_drivers['ID'] = id_list
     selected_drivers["QUAL"] = "."
     selected_drivers["FILTER"] = "."
     selected_drivers['driver'] = selected_drivers['driver'].apply(lambda x: f'driver_{x}')
@@ -1520,7 +1565,7 @@ def assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_
 
     return(vcf)
 
-def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID) -> pd.DataFrame:
+def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, idx=0, prefix=None) -> pd.DataFrame:
 
     """
     Convert the pandas DataFrame into a VCF
@@ -1568,9 +1613,13 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
             continue
     
     # Create the VCF
+    if prefix == None:
+        id_list:list = [f"sim{idx+1}"] * len(muts['chrom'])
+    else:
+        id_list:list = [prefix] * len(muts['chrom'])
     vcf:dict = {"#CHROM":muts['chrom'],
                 "POS":muts['pos'],
-                "ID":[f"sim{donorID+1}"] * len(muts['chrom']),
+                "ID":id_list,
                 "REF":new_ref_list,
                 "ALT":new_alt_list,
                 "QUAL":".",
@@ -1580,7 +1629,7 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
 
     # Assign driver mutations to the VCF
     if drivers_counts.sum() > 0:
-        vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, donorID)
+        vcf = assign_drivers(vcf, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, fasta, idx=idx, prefix=prefix)
 
     # Sort the VCF
     vcf['#CHROM'] = vcf['#CHROM'].apply(chrom2int)
@@ -1793,7 +1842,7 @@ def combine_same_cna_events(cnas_df) -> pd.DataFrame:
     
     return(combined_df)
 
-def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx) -> pd.DataFrame:
+def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) -> pd.DataFrame:
     
     """
     Generate CNAs
@@ -1830,7 +1879,10 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx) -> pd.DataFrame:
     case_cnas = adjust_cna_position(case_cnas, gender)
     
     # Add donor id
-    case_cnas["donor_id"] = f"sim{idx}"
+    if prefix == None:
+        case_cnas["donor_id"] = f"sim{idx}"
+    else:
+        case_cnas["donor_id"] = prefix
     case_cnas = case_cnas[["chrom", "start", "end", "major_cn", "minor_cn", "donor_id", "study"]]
 
     # Combine same CNAs events
@@ -1857,7 +1909,7 @@ def assign_cna_plot_color(y) -> str:
     else:
         return "Loss"
     
-def plot_cnas(cna_profile, sv_profile, tumor, output, idx) -> None:
+def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> None:
 
     """
     Plot CNA segments
@@ -2022,7 +2074,10 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx) -> None:
     sns.despine(trim=True, left=False, bottom=False)
     ## Set axis labels and subtitle
     ax = plt.gca()
-    plt.title(f'{tumor} - Donor{idx}', fontsize=16, y=1.1)
+    if prefix == None:
+        plt.title(f'{tumor} - Donor{idx}', fontsize=16, y=1.1)
+    else:
+        plt.title(f'{tumor} - {prefix}', fontsize=16, y=1.1)
     plt.xlabel('Genome', fontsize=14)
     plt.tick_params(axis='x', which='both', length=0, labelbottom=False)
     plt.ylabel('CNA', fontsize=14)
@@ -2481,7 +2536,7 @@ def align_cna_sv(cna, sv) -> pd.DataFrame:
 
     return(sv_assigned)
 
-def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
+def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx=0, prefix=None) -> pd.DataFrame:
     
     """
     Generate SVs
@@ -2515,7 +2570,10 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx) -> pd.DataFrame:
     case_sv = align_cna_sv(case_cna, case_sv)
     
     # Add donor and tumor columns
-    case_sv["donor_id"] = f"sim{idx}"
+    if prefix == None:
+        case_sv["donor_id"] = f"sim{idx}"
+    else:
+        case_sv["donor_id"] = prefix
     case_sv["tumor"] = tumor
     try:
         case_sv = case_sv.drop(columns=['sv_id'])
@@ -2596,7 +2654,7 @@ def availTumors():
 def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
 
     """
-    Command to simulate mutations (VCF) for different tumor types using a GAN model
+    Command to simulate mutations (VCF), CNAs and SVs for different tumor types using a GAN model
     """
     
     # Create the output directory if it doesn't exist
@@ -2625,7 +2683,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
     # Simulate one donor at a time
     muts:pd.DataFrame = pd.DataFrame()
     for idx in tqdm(range(nCases), desc = "Donors"):
-        output:str = out_path(outDir, prefix, tumor, idx+1)
+        output:str = out_path(outDir, tumor=tumor, prefix=prefix, n=idx+1)
         
         # Focus in one case
         case_counts:pd.Series = counts.iloc[idx]
@@ -2667,7 +2725,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             drivers_vafs:list = simulate_mut_vafs(tumor, case_rank, case_drivers.sum())
 
             # Create the VCF output
-            vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx)
+            vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx=idx)
 
             # Write the VCF
             ## Convert from hg19 to hg38
@@ -2684,14 +2742,204 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
 
         if simulateCNA_SV:
             # Simulate CNAs
-            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx+1)
+            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx=idx+1)
 
             # Simulate SVs
-            case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx+1)
+            case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx=idx+1)
             
             # Plots
             if savePlots:
-                plot_cnas(case_cna, case_sv, tumor, output.replace(".vcf", "_cna.png"), idx+1) 
+                plot_cnas(case_cna, case_sv, tumor, output.replace(".vcf", "_cna.png"), idx=idx+1) 
+            
+            # Convert from hg19 to hg38
+            if hg38:
+                case_cna = hg19tohg38(cna=case_cna)
+                case_sv = hg19tohg38(sv=case_sv)
+
+            # Save simulations
+            case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
+            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
+
+@click.command(name="vcfGANerator-custom")
+@click.option("-@", "--cpus",
+              type=click.INT,
+              default=1,
+              show_default=True,
+              help="Number of CPUs to use")
+@click.option("--template",
+              type=click.Path(exists=True, file_okay=True),
+              required = True,
+              help="File in CSV format with the number of each type of mutation to simulate for each donor (template available on GitHub)")
+@click.option("-r", "--refGenome", "refGenome",
+              type=click.Path(exists=True, file_okay=True),
+              required=True,
+              help="hg19 reference genome in fasta format")
+@click.option("--outDir", "outDir",
+              type=click.Path(exists=False, file_okay=False),
+              default=os.getcwd(),
+              show_default=False,
+              help="Directory where save the simulations. Default is the current directory")
+@click.option("--hg38", "hg38",
+              is_flag=True,
+              required=False,
+              help="Transform the mutations to hg38")
+@click.option("--mut/--no-mut", "simulateMuts",
+              is_flag=True,
+              required=False,
+              default=True,
+              show_default=True,
+              help="Simulate mutations")
+@click.option("--CNA-SV/--no-CNA-SV", "simulateCNA_SV",
+              is_flag=True,
+              required=False,
+              default=True,
+              show_default=True,
+              help="Simulate CNA and SV events")
+@click.option("--plots/--no-plots", "savePlots",
+              is_flag=True,
+              required=False,
+              default=True,
+              show_default=True,
+              help="Save plots")
+@click.version_option(version=VERSION,
+                      package_name="OncoGAN",
+                      prog_name="OncoGAN")
+def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
+
+    """
+    Command to simulate mutations (VCF), CNAs and SVs for personalized tumors using a GAN model
+    """
+
+    # Load the template file
+    template_df:pd.DataFrame = pd.read_csv(template)
+
+    # Check if all the requested tumor types exist
+    avail_tumors:list = ["Breast-AdenoCa", "CNS-PiloAstro", "Eso-AdenoCa", "Kidney-RCC", "Liver-HCC", "Lymph-CLL", "Panc-Endocrine", "Prost-AdenoCA", "-"]
+    missing_tumors = template_df[~template_df['cna_sv_profile'].isin(avail_tumors)]['cna_sv_profile'].unique()
+    if len(missing_tumors) > 0:
+        print(f"Warning: The following tumors are not available: {missing_tumors}")
+        sys.exit(1)
+    
+    # Create the output directory if it doesn't exist
+    if not os.path.exists(outDir):
+        os.makedirs(outDir)
+
+    # Torch options
+    device:str = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
+    # Load reference genome
+    fasta = Fasta(refGenome)
+
+    # Load CNA and SV models
+    cna_sv_countModel, cnaModel, svModel = cna_sv_models(device)
+
+    # Simulate one donor at a time
+    muts:pd.DataFrame = pd.DataFrame()
+    for _,row in tqdm(template_df.iterrows(), desc = "Donors", total=len(template_df)):
+        # Donor ID
+        prefix:str = row['id']
+        output:str = out_path(outDir, tumor=None, prefix=prefix, custom=True)
+
+        # CNV-SV tumor profile
+        cna_sv_tumor:str = row['cna_sv_profile']
+        general_tumor:str = cna_sv_tumor if cna_sv_tumor != '-' else random.choice(sig2tum['SBS1'])
+        case_simulateCNA_SV:bool = simulateCNA_SV if cna_sv_tumor != '-' else False
+
+         # Create the custom donor dataframe
+        row = row.drop(['id', 'cna_sv_profile'])
+        row = row[row != 0]
+        df_case_counts:pd.DataFrame = row.reset_index()
+        df_case_counts.columns = ['mut', 'nMut']
+        df_case_counts['tumor_type'] = df_case_counts['mut'].apply(lambda x: random.choice(sig2tum[x]) if x in sig2tum else None)
+        df_case_counts = df_case_counts.groupby('tumor_type')
+
+        # Gender selection
+        gender:str = gender_selection(general_tumor)
+
+        # Annotate VAFs
+        donors_vafRank:list = simulate_vaf_rank(general_tumor, 1)
+        case_rank:str = donors_vafRank[0]
+        mut_vafs:list = simulate_mut_vafs(general_tumor, case_rank, int(row.sum()))
+        
+        # Donor drivers
+        driversModel = tumor_models(general_tumor, device, drivers_only=True)
+        if general_tumor == 'Lymph-CLL':
+            drivers_tumor:str = 'Lymph-MCLL' if 'SBS9' in row.index else 'Lymph-UCLL'
+        else:
+            drivers_tumor:str = general_tumor
+        case_drivers:pd.Series = simulate_drivers(drivers_tumor, driversModel)
+        drivers_vafs:list = simulate_mut_vafs(general_tumor, case_rank, case_drivers.sum())
+
+        # Simulate a mutation type at a time
+        complete_case_muts = pd.DataFrame()
+        for tumor, subset in df_case_counts:
+            case_counts:pd.Series = subset.set_index("mut")["nMut"].rename_axis(None)
+            nMut:int = int(case_counts.sum())
+            
+            # Load models
+            countModel, mutModel, posModel, countCorr, countEx = tumor_models(tumor, device, no_drivers=True)
+            if tumor == 'Lymph-CLL':
+                tumor2:str = 'Lymph-MCLL' if 'SBS9' in case_counts.index else 'Lymph-UCLL'
+            else:
+                tumor2:str = tumor
+
+            # Generate the mutations
+            muts, case_muts = simulate_mutations(mutModel, muts, nMut, case_counts, tumor2)
+            
+            # Select the mutations corresponding for this case
+            muts, case_muts = select_case_mutations(muts, case_counts)
+
+            # Reduce muts size over rounds
+            if muts.shape[0] > 1e7:
+                muts = pd.DataFrame()
+            else:
+                muts = muts.sample(frac=0.5).reset_index(drop=True)
+
+            # Generate the chromosome and position of the mutations
+            case_muts = assign_position(tumor, case_counts, case_muts, posModel, nMut, fasta, gender, cpus)
+
+            # Concatenate the simulations
+            complete_case_muts = pd.concat([complete_case_muts,case_muts])
+
+        # Assign the VAF to the mutations
+        complete_case_muts['vaf'] = mut_vafs
+
+        # Create the VCF output
+        vcf:pd.DataFrame = pd2vcf(complete_case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, prefix=prefix)
+
+        # Write the VCF
+        ## Convert from hg19 to hg38
+        if hg38:
+            vcf = hg19tohg38(vcf=vcf)
+        with open(output, "w+") as out:
+            out.write("##fileformat=VCFv4.2\n")
+            out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+            out.write(f"##source=OncoGAN-v{VERSION}\n")
+            out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
+            out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+            out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
+        vcf.to_csv(output, sep="\t", index=False, mode="a")
+
+        if case_simulateCNA_SV:
+            # Load models
+            countModel, countCorr, countEx = tumor_models(cna_sv_tumor, device, counts_only=True)
+
+            # Generate the total number of counts to use as template for a specific case
+            counts:pd.DataFrame = simulate_counts(cna_sv_tumor, countModel, 1, countCorr, countEx)
+
+            # Generate CNA and SV counts for each case
+            cna_sv_counts:pd.DataFrame = select_cna_sv_counts(cna_sv_countModel, 1, cna_sv_tumor, counts)
+            case_cna_sv:pd.Series = cna_sv_counts.iloc[0]
+            
+            # Simulate CNAs
+            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], cna_sv_tumor, cnaModel, gender, prefix=prefix)
+
+            # Simulate SVs
+            case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], cna_sv_tumor, svModel, gender, prefix=prefix)
+            
+            # Plots
+            if savePlots:
+                plot_cnas(case_cna, case_sv, cna_sv_tumor, output.replace(".vcf", "_cna.png"), prefix=prefix) 
             
             # Convert from hg19 to hg38
             if hg38:
@@ -2704,5 +2952,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
+cli.add_command(oncoGAN_custom)
 if __name__ == '__main__':
     cli()
+    
