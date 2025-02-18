@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 class MLP(torch.nn.Module):
     def __init__(self, num_fc_layers, num_fc_units, dropout_rate):
@@ -195,9 +196,9 @@ def DeepTumour(vcfFile, vcfDir, refGenome, hg38, keep_input, outDir):
         input:pd.DataFrame = vcf2input(vcfFile, refGenome, hg38)
     elif vcfDir and not vcfFile:
         input:pd.DataFrame = pd.DataFrame()
-        for file in os.listdir(vcfDir):
-            if file.endswith('.vcf'):
-                input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, hg38)])
+        vcf_files:list = [file for file in os.listdir(vcfDir) if file.endswith('.vcf')]
+        for file in tqdm(vcf_files, desc="Processing VCF files"):
+            input = pd.concat([input, vcf2input(os.path.join(vcfDir, file), refGenome, hg38)])
     else:
         raise ValueError('Please provide either a VCF file or a directory with VCF files')
     
