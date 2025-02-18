@@ -5,7 +5,7 @@
 
 A pipeline that accurately simulates high quality publicly cancer genomes (VCFs, CNAs and SVs) for eight different tumor types: Breast-AdenoCa, CNS-PiloAstro, Eso-AdenoCa, Kidney-RCC, Liver-HCC, Lymph-CLL, Panc-Endocrine and Prost-AdenoCa. OncoGAN offers a solution to current challenges in data accessibility and privacy while also serving as a powerful tool for enhancing algorithm development and benchmarking.
 
-In addition to this pipeline, we have released 100 simulated VCFs for each of the eight studied tumor types, and that are availbale on [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-syntheticVCFs) and [Zotero](https://zenodo.org/records/13946727).
+In addition to this pipeline, we have released 100 simulated VCFs for each of the eight studied tumor types, and that are availbale on [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-syntheticVCFs) and [Zotero](https://zenodo.org/records/14889626).
 
 ## Index
 
@@ -63,7 +63,7 @@ singularity build deeptumour.sif docker://oicr/oncogan:deeptumour
 
 ### Download models
 
-OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/13946727).
+OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
 
 ## Generate synthetic VCFs
 
@@ -192,7 +192,7 @@ singularity exec /PATH_TO/oncogan_simulating_v0.2.sif launcher.py availTumors
 
 ## Train new models
 
-Files used to train OncoGAN models can be found [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-training_files) and [Zotero](https://zenodo.org/records/13946727). The directory containing these files or your custom training files need to be mounted into the docker/singularity container.
+Files used to train OncoGAN models can be found [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-training_files) and [Zotero](https://zenodo.org/records/14889626). The directory containing these files or your custom training files need to be mounted into the docker/singularity container.
 
 We used two different training approaches: 
 
@@ -334,7 +334,7 @@ jupyter --help
 
 ## DeepTumour
 
-[DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/13946727). To use them:
+[DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/14889626). To use them:
 
 ```bash
 docker run --rm -u $(id -u):$(id -g) \
