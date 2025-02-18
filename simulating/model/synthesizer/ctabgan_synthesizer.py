@@ -163,7 +163,7 @@ class Cond(object):
             
         return vec, mask, idx, opt1prime
 
-    def sample(self, batch):
+    def sample(self, batch, col_idx):
         if self.n_col == 0:
             return None
         batch = batch
@@ -174,7 +174,10 @@ class Cond(object):
         opt1prime = random_choice_prob_index_sampling(self.p_sampling,idx)
         
         for i in np.arange(batch):
-            vec[i, self.interval[idx[i], 0] + opt1prime[i]] = 1
+            if col_idx != None:
+                vec[i, col_idx] = 1
+            else:
+                vec[i, self.interval[idx[i], 0] + opt1prime[i]] = 1
             
         return vec
 
@@ -546,10 +549,9 @@ class CTABGANSynthesizer:
                     optimizerC.step()
                                 
             epoch += 1
-
             
    
-    def sample(self, n):
+    def sample(self, n, var_column_index, var_class_index):
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -557,12 +559,18 @@ class CTABGANSynthesizer:
 
         output_info = self.transformer.output_info
         steps = n // self.batch_size + 1
-        
+
+        if var_class_index != None:
+            i2s_col_idx = self.transformer.meta[var_column_index]['i2s'].index(var_class_index)
+            col_idx = self.cond_generator.interval[var_column_index][0] + i2s_col_idx 
+        else:
+            col_idx = None
+
         data = []
         
         for i in range(steps):
             noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
-            condvec = self.cond_generator.sample(self.batch_size)
+            condvec = self.cond_generator.sample(self.batch_size, col_idx)
             c = condvec
             c = torch.from_numpy(c).to(self.device)
             noisez = torch.cat([noisez, c], dim=1)
@@ -575,6 +583,8 @@ class CTABGANSynthesizer:
 
         data = np.concatenate(data, axis=0)
         result,resample = self.transformer.inverse_transform(data)
+        if col_idx != None:
+            result = result[result[:, var_column_index] == var_class_index]
 
         while len(result) < n:
             data_resample = []    
@@ -582,7 +592,7 @@ class CTABGANSynthesizer:
             
             for i in range(steps_left):
                 noisez = torch.randn(self.batch_size, self.random_dim, device=self.device)
-                condvec = self.cond_generator.sample(self.batch_size)
+                condvec = self.cond_generator.sample(self.batch_size, col_idx)
                 c = condvec
                 c = torch.from_numpy(c).to(self.device)
                 noisez = torch.cat([noisez, c], dim=1)
@@ -596,6 +606,8 @@ class CTABGANSynthesizer:
             data_resample = np.concatenate(data_resample, axis=0)
 
             res,resample = self.transformer.inverse_transform(data_resample)
+            if col_idx != None:
+                res = res[res[:, var_column_index] == var_class_index]
             result  = np.concatenate([result,res],axis=0)
         
         return result[0:n]

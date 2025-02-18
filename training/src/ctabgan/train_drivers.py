@@ -117,7 +117,7 @@ def trainDrivers(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, catego
 def trainDriversClick(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, tqdm_disable):
 
     """
-    Train a drivers CTABGAN model
+    Train a CTABGAN model for driver features
     """
 
     trainDrivers(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, tqdm_disable)

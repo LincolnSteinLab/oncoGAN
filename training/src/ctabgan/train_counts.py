@@ -126,7 +126,7 @@ def trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categor
 def trainCountsClick(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable):
 
     """
-    Train a counts CTABGAN model
+    Train a CTABGAN model for donor characteristics
     """
 
     trainCounts(csv, prefix, outdir, epochs, batch_size, lr, test_ratio, categorical_columns, log_columns, integer_columns, mixed_columns, general_columns, tqdm_disable)

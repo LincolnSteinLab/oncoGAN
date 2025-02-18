@@ -19,6 +19,7 @@ COPY model /oncoGAN/model
 COPY src/* /oncoGAN/
 ## Update PATH
 ENV PATH=$PATH:/oncoGAN/
+ENV MPLCONFIGDIR=/tmp
 ## Entrypoint
 WORKDIR /home
 ENTRYPOINT ["launcher.py"]
