@@ -14,6 +14,8 @@ In addition to this pipeline, we have released 100 simulated VCFs for each of th
     - [Singularity](#singularity)
     - [Download models](#download-models)
 2. [Generate synthetic VCFs](#generate-synthetic-vcfs)
+    - [Real profiles](#tumors-with-real-profiles)
+    - [Custom profiles](#tumors-with-custom-profiles)
     - [More options](#more-options)
 3. [Train new models](#train-new-models)
     - [Baseline command](#baseline-command)
