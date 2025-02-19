@@ -1628,7 +1628,7 @@ def pd2vcf(muts, drivers_counts, drivers_mutations, drivers_vaf, drivers_tumor, 
     vcf = pd.DataFrame(vcf)
 
     # Update TNPs positions
-    tnps:pd.DataFrame = vcf[vcf["MUT"] == "TNP"]
+    tnps:pd.DataFrame = vcf[vcf["INFO"].str.contains("TNP", na=False)]
     if len(tnps.index) > 0:
         vcf.loc[tnps.index, 'POS'] = tnps['POS'] - 1
 
