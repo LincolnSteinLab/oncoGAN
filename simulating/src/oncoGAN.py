@@ -5,6 +5,7 @@ sys.path.append('/oncoGAN/')
 
 import os
 import re
+import copy
 import click
 import pickle
 import torch
@@ -18,6 +19,7 @@ from datetime import date
 from liftover import ChainFile
 from tqdm import tqdm
 from pyfaidx import Fasta
+import pyranges as pr
 
 VERSION = "0.2"
 
@@ -2587,6 +2589,180 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx=0, prefix=None) -> pd
 
     return(case_sv)
 
+def update_vaf(vcf, case_cna, case_sv, gender) -> list:
+
+    """
+    Update random generated VAFs to match CNA number
+    """
+
+    # Process VCF
+    vcf['snv_id'] = [f"snv{i+1}" for i in range(len(vcf))]
+
+    # Process CNA
+    case_cna = case_cna.drop(columns=['donor_id', 'study'])
+    case_cna = case_cna.rename(columns={'major_cn': 'major', 'minor_cn': 'minor'})
+    case_cna = case_cna.melt(id_vars=[col for col in case_cna.columns if col not in ['major', 'minor']],
+                            value_vars=['major', 'minor'],
+                            var_name='allele',
+                            value_name='cn')
+
+    # Process SV
+    case_sv = case_sv[case_sv['svclass'].isin(['DUP', 'DEL'])]
+    case_sv = case_sv[['chrom1', 'start1', 'start2', 'svclass', 'id', 'allele']]
+    case_sv = case_sv.rename(columns={'chrom1': 'chrom', 'start1': 'start', 'start2': 'end'})
+
+    # Join CNA and SV
+    case_sv_cna:pd.DataFrame = case_sv.merge(case_cna[['id', 'allele', 'cn']], on=['id', 'allele'], how='left')
+    case_sv_cna['cn_rep'] = case_sv_cna['cn'].apply(lambda x: x if x > 1 else 1)
+    case_sv_cna['id'] = case_sv_cna.apply(lambda row: f"x{row['chrom']}_{row['id']}", axis=1)
+    case_sv_cna = case_sv_cna.loc[case_sv_cna.index.repeat(case_sv_cna['cn_rep'])].copy()
+    case_sv_cna = case_sv_cna.drop(columns=['cn', 'allele', 'cn_rep'])
+    case_sv_cna = case_sv_cna.rename(columns={'id': 'cna_id'})
+
+    # Match SV and SNV
+    sv_range:pd.DataFrame = case_sv_cna[['chrom', 'start', 'end', 'cna_id']].drop_duplicates().reset_index(drop=True)
+    vcf_range:pd.DataFrame = vcf.copy()
+    vcf_range['POS2'] = vcf_range['POS']
+
+    ## Create PyRanges objects
+    sv_range:pr.PyRanges = pr.PyRanges(sv_range.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
+    snv_range:pr.PyRanges = pr.PyRanges(vcf_range.rename(columns={'#CHROM': 'Chromosome', 'POS': 'Start', 'POS2': 'End'}))
+
+    ## Perform overlap
+    overlapping_snvs:pr.PyRanges = snv_range.join(sv_range)
+    overlapping_snvs:pd.DataFrame = overlapping_snvs.df.copy().drop(columns=['Start_b', 'End_b'])
+    overlapping_snvs = overlapping_snvs.rename(columns={'Chromosome': 'chrom', 'Start': 'start', 'ID': 'donor'})
+    overlapping_snvs = overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
+
+    ## Get nonverlapping SNVs
+    non_overlapping_snvs:pd.DataFrame = vcf[~vcf['snv_id'].isin(overlapping_snvs['snv_id'])].copy()
+    non_overlapping_snvs['cna_id'] = "no_cna"
+    non_overlapping_snvs = non_overlapping_snvs.rename(columns={'#CHROM': 'chrom', 'POS': 'start', 'ID': 'donor'})
+    non_overlapping_snvs = non_overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
+
+    ## Combine
+    snv_ann:pd.DataFrame = pd.concat([overlapping_snvs, non_overlapping_snvs], ignore_index=True)
+
+    # Compute VAFs
+    ## Set the order of the events
+    sv_events:pd.DataFrame = case_sv_cna[['svclass', 'cna_id']].rename(columns={'svclass': 'class'})
+    snv_events:pd.DataFrame = snv_ann[['cna_id', 'snv_id']].copy()
+    snv_events['class'] = 'MUT'
+    random_order_event:pd.DataFrame = pd.concat([sv_events, snv_events], ignore_index=True)
+    random_order_event = random_order_event.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    ## Create a dict of alleles for each cna
+    def assign_alleles(x) -> list:
+        if str(x).startswith("xX"):
+            if gender == "F":
+                return ["allele_1", "allele_2"]
+            else:
+                return ["allele_1"]
+        elif str(x).startswith("xY"):
+            if gender == "F":
+                return []
+            else:
+                return ["allele_1"]
+        else:
+            return ["allele_1", "allele_2"]
+    cna_ids:list = ["no_cna"] + case_sv_cna["cna_id"].unique().tolist()
+    allele_ploidy:dict = {cna_id: assign_alleles(cna_id) for cna_id in cna_ids}
+    allele_ploidy_original:dict = copy.deepcopy(allele_ploidy)
+
+    ## Create a dict for each cna and allele
+    mut_dict:dict = {cna_id: {} for cna_id in cna_ids}
+
+    ## Iterate over the events sequentially
+    for i in range(len(random_order_event)):
+        f_class:str = random_order_event.loc[i, "class"]
+        f_cna_id:str = random_order_event.loc[i, "cna_id"]
+        f_snv_id:str = random_order_event.loc[i, "snv_id"]
+
+        # Choose a random allele
+        available_alleles:list = allele_ploidy.get(f_cna_id)
+        if not available_alleles:
+            continue
+        allele:str = random.choice(available_alleles)
+
+        # MUTATION CASE
+        if f_class == "MUT":
+            mut_df:pd.DataFrame = pd.DataFrame({"id": [f_snv_id]})
+            if allele not in mut_dict[f_cna_id]:
+                mut_dict[f_cna_id][allele] = mut_df
+            else:
+                mut_dict[f_cna_id][allele] = pd.concat([mut_dict[f_cna_id][allele], mut_df], ignore_index=True)
+
+        # DUPLICATION CASE
+        elif f_class == "DUP":
+            ### Update the number of alleles
+            new_len:int = len(allele_ploidy_original[f_cna_id]) + 1
+            allele_ploidy_original[f_cna_id] = [f"allele_{j}" for j in range(1, new_len + 1)]
+            allele_ploidy[f_cna_id].append(allele_ploidy_original[f_cna_id][-1])
+
+            ### Select the new allele
+            new_allele:str = allele_ploidy[f_cna_id][-1]
+
+            ### Duplicate the allele
+            if allele in mut_dict[f_cna_id]:
+                mut_dict[f_cna_id][new_allele] = mut_dict[f_cna_id][allele].copy()
+
+        # DELETION CASE
+        elif f_class == "DEL":
+            ### Update the number of alleles
+            if allele in allele_ploidy[f_cna_id]:
+                allele_ploidy[f_cna_id].remove(allele)
+            ### Remove the mutations in that allele
+            mut_dict[f_cna_id].pop(allele, None)
+
+    ## Combine event reconstruction
+    mut_dict_list:list = []
+    for cna_id, allele_key in mut_dict.items():
+        total_allele:int = len(allele_key)
+        for allele, df in allele_key.items():
+            temp_df:pd.DataFrame = df.copy()
+            temp_df["cna_id"] = cna_id
+            temp_df["allele"] = allele
+            temp_df["total_allele"] = total_allele
+            mut_dict_list.append(temp_df)
+    mut_dict_df:pd.DataFrame = pd.concat(mut_dict_list, ignore_index=True)
+
+    ## Count how many alleles each mutation is found in
+    mut_dict_df = mut_dict_df.groupby("id").agg({
+        "allele": lambda x: ",".join(sorted(x)),
+        "cna_id": "first",
+        "total_allele": "first"
+    }).reset_index()
+    mut_dict_df["n_alleles"] = mut_dict_df["allele"].apply(lambda x: len(x.split(",")))
+
+    ## Simulate base VAFs and adjust
+    vaf:np.array = np.random.normal(loc=1, scale=0.15, size=len(mut_dict_df))
+    vaf:list = list(vaf * (mut_dict_df["n_alleles"] / mut_dict_df["total_allele"]))
+    vaf = [v if v < 1 else 1 - np.random.normal(loc=0.1, scale=0.03) for v in vaf]
+    vaf = [round(v, ndigits=2) for v in vaf]
+    mut_dict_df["vaf"] = vaf
+
+    # Export the VCF and the order of the events
+    ## VCF
+    updated_vcf:pd.DataFrame = vcf.merge(
+        mut_dict_df.drop(columns=["n_alleles"], errors="ignore"),
+        left_on="snv_id",
+        right_on="id",
+        how="left"
+    )
+    updated_vcf = updated_vcf[~updated_vcf["vaf"].isna()] #missing alleles
+    updated_vcf['ID'] = updated_vcf.apply(lambda row: f"{row['snv_id']}_{row['ID']}", axis=1)
+    def update_info(row):
+        ms = row['INFO'].split(';')[1]
+        cn_number = row['cna_id'].split('_')[-1]
+        return f"AF={row['vaf']};{ms};TA={int(row['total_allele'])};AL={row['allele']};CN={cn_number}"
+    updated_vcf.loc[:, 'INFO'] = updated_vcf.apply(update_info, axis=1)
+    updated_vcf = updated_vcf.drop(columns=['snv_id', 'id', 'allele', 'cna_id', 'vaf', 'total_allele']).reset_index(drop=True)
+
+    ## Events
+    random_order_event = random_order_event.reset_index()
+
+    return(updated_vcf, random_order_event)
+
 @click.group()
 def cli():
     pass
@@ -2733,17 +2909,18 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
             vcf:pd.DataFrame = pd2vcf(case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, idx=idx)
 
             # Write the VCF
-            ## Convert from hg19 to hg38
-            if hg38:
-                vcf = hg19tohg38(vcf=vcf)
-            with open(output, "w+") as out:
-                out.write("##fileformat=VCFv4.2\n")
-                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
-                out.write(f"##source=OncoGAN-v{VERSION}\n")
-                out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
-                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
-                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
-            vcf.to_csv(output, sep="\t", index=False, mode="a")
+            if not simulateCNA_SV:
+                ## Convert from hg19 to hg38
+                if hg38:
+                    vcf = hg19tohg38(vcf=vcf)
+                with open(output, "w+") as out:
+                    out.write("##fileformat=VCFv4.2\n")
+                    out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                    out.write(f"##source=OncoGAN-v{VERSION}\n")
+                    out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
+                    out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                    out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
+                vcf.to_csv(output, sep="\t", index=False, mode="a")
 
         if simulateCNA_SV:
             # Simulate CNAs
@@ -2751,7 +2928,27 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx=idx+1)
-            
+
+            # Update mutation VAFs according to CNAs
+            if simulateMuts:
+                vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender)
+
+                ## Convert from hg19 to hg38
+                if hg38:
+                    vcf = hg19tohg38(vcf=vcf)
+                with open(output, "w+") as out:
+                    out.write("##fileformat=VCFv4.2\n")
+                    out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                    out.write(f"##source=OncoGAN-v{VERSION}\n")
+                    out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
+                    out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                    out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
+                    out.write('##INFO=<ID=TA,Number=A,Type=Integer,Description="Total number of alleles in which the mutation can appear">\n')
+                    out.write('##INFO=<ID=AL,Number=A,Type=String,Description="Alleles in which the mutation appears">\n')
+                    out.write('##INFO=<ID=CN,Number=A,Type=String,Description="Copy Number ID in which the mutation is located">\n')
+                vcf.to_csv(output, sep="\t", index=False, mode="a")
+                events_order.to_csv(output.replace(".vcf", "_events_order.tsv"), sep="\t", index=False, mode="w")
+
             # Plots
             if savePlots:
                 plot_cnas(case_cna, case_sv, tumor, output.replace(".vcf", "_cna.png"), idx=idx+1) 
@@ -2913,17 +3110,18 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
         vcf:pd.DataFrame = pd2vcf(complete_case_muts, case_drivers, driversModel, drivers_vafs, drivers_tumor, fasta, prefix=prefix)
 
         # Write the VCF
-        ## Convert from hg19 to hg38
-        if hg38:
-            vcf = hg19tohg38(vcf=vcf)
-        with open(output, "w+") as out:
-            out.write("##fileformat=VCFv4.2\n")
-            out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
-            out.write(f"##source=OncoGAN-v{VERSION}\n")
-            out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
-            out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
-            out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
-        vcf.to_csv(output, sep="\t", index=False, mode="a")
+        if not case_simulateCNA_SV:
+            ## Convert from hg19 to hg38
+            if hg38:
+                vcf = hg19tohg38(vcf=vcf)
+            with open(output, "w+") as out:
+                out.write("##fileformat=VCFv4.2\n")
+                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                out.write(f"##source=OncoGAN-v{VERSION}\n")
+                out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
+                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
+            vcf.to_csv(output, sep="\t", index=False, mode="a")
 
         if case_simulateCNA_SV:
             # Load models
@@ -2942,6 +3140,25 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], cna_sv_tumor, svModel, gender, prefix=prefix)
             
+            # Update mutation VAFs according to CNAs
+            vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender)
+
+            ## Convert from hg19 to hg38
+            if hg38:
+                vcf = hg19tohg38(vcf=vcf)
+            with open(output, "w+") as out:
+                out.write("##fileformat=VCFv4.2\n")
+                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                out.write(f"##source=OncoGAN-v{VERSION}\n")
+                out.write(f"##reference={'hg38' if hg38 else 'hg19'}\n")
+                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">\n')
+                out.write('##INFO=<ID=TA,Number=A,Type=Integer,Description="Total number of alleles in which the mutation can appear">\n')
+                out.write('##INFO=<ID=AL,Number=A,Type=String,Description="Alleles in which the mutation appears">\n')
+                out.write('##INFO=<ID=CN,Number=A,Type=String,Description="Copy Number ID in which the mutation is located">\n')
+            vcf.to_csv(output, sep="\t", index=False, mode="a")
+            events_order.to_csv(output.replace(".vcf", "_events_order.tsv"), sep="\t", index=False, mode="w")
+
             # Plots
             if savePlots:
                 plot_cnas(case_cna, case_sv, cna_sv_tumor, output.replace(".vcf", "_cna.png"), prefix=prefix) 
