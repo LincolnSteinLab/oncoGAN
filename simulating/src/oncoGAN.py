@@ -2589,7 +2589,7 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx=0, prefix=None) -> pd
 
     return(case_sv)
 
-def update_vaf(vcf, case_cna, case_sv, gender) -> list:
+def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
     """
     Update random generated VAFs to match CNA number
@@ -2735,8 +2735,9 @@ def update_vaf(vcf, case_cna, case_sv, gender) -> list:
     mut_dict_df["n_alleles"] = mut_dict_df["allele"].apply(lambda x: len(x.split(",")))
 
     ## Simulate base VAFs and adjust
+    nit_perc:float = 1-nit
     vaf:np.array = np.random.normal(loc=1, scale=0.15, size=len(mut_dict_df))
-    vaf:list = list(vaf * (mut_dict_df["n_alleles"] / mut_dict_df["total_allele"]))
+    vaf:list = list(vaf * (mut_dict_df["n_alleles"] / mut_dict_df["total_allele"]) * nit_perc)
     vaf = [v if v < 1 else 1 - np.random.normal(loc=0.1, scale=0.03) for v in vaf]
     vaf = [round(v, ndigits=2) for v in vaf]
     mut_dict_df["vaf"] = vaf
@@ -2795,6 +2796,11 @@ def availTumors():
               default=1,
               show_default=True,
               help="Number of cases to simulate")
+@click.option("--NinT", "nit",
+              type=click.FLOAT,
+              default=0.0,
+              show_default=True,
+              help="Normal in Tumor contamination to be taken into account when adjusting VAF for CNA-SV events (e.g. 0.20 = 20%)")
 @click.option("-r", "--refGenome", "refGenome",
               type=click.Path(exists=True, file_okay=True),
               required=True,
@@ -2832,7 +2838,7 @@ def availTumors():
 @click.version_option(version=VERSION,
                       package_name="OncoGAN",
                       prog_name="OncoGAN")
-def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
+def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
 
     """
     Command to simulate mutations (VCF), CNAs and SVs for different tumor types using a GAN model
@@ -2931,7 +2937,7 @@ def oncoGAN(cpus, tumor, nCases, refGenome, prefix, outDir, hg38, simulateMuts, 
 
             # Update mutation VAFs according to CNAs
             if simulateMuts:
-                vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender)
+                vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
 
                 ## Convert from hg19 to hg38
                 if hg38:
@@ -3047,8 +3053,11 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
         general_tumor:str = cna_sv_tumor if cna_sv_tumor != '-' else random.choice(sig2tum['SBS1'])
         case_simulateCNA_SV:bool = simulateCNA_SV if cna_sv_tumor != '-' else False
 
-         # Create the custom donor dataframe
-        row = row.drop(['id', 'cna_sv_profile'])
+        # Normal in Tumor contamination
+        nit:float = float(row['NinT'])
+
+        # Create the custom donor dataframe
+        row = row.drop(['id', 'cna_sv_profile', 'NinT'])
         row = row[row != 0]
         df_case_counts:pd.DataFrame = row.reset_index()
         df_case_counts.columns = ['mut', 'nMut']
@@ -3141,7 +3150,7 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], cna_sv_tumor, svModel, gender, prefix=prefix)
             
             # Update mutation VAFs according to CNAs
-            vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender)
+            vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
 
             ## Convert from hg19 to hg38
             if hg38:
