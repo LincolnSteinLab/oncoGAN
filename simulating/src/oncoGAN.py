@@ -21,7 +21,7 @@ from tqdm import tqdm
 from pyfaidx import Fasta
 import pyranges as pr
 
-VERSION = "0.2"
+VERSION = "0.2.1"
 
 sig2tum:dict = {
     "DNP": ["Breast-AdenoCa","CNS-PiloAstro","Eso-AdenoCa","Kidney-RCC","Liver-HCC","Lymph-CLL","Panc-Endocrine","Prost-AdenoCA"],
