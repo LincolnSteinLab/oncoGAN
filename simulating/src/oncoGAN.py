@@ -2613,11 +2613,11 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
     # Join CNA and SV
     case_sv_cna:pd.DataFrame = case_sv.merge(case_cna[['id', 'allele', 'cn']], on=['id', 'allele'], how='left')
-    case_sv_cna['cn_rep'] = case_sv_cna['cn'].apply(lambda x: x if x > 1 else 1)
+    case_sv_cna['cn_rep'] = case_sv_cna['cn'].apply(lambda x: 1 if x == 0 else x-1)
     case_sv_cna['id'] = case_sv_cna.apply(lambda row: f"x{row['chrom']}_{row['id']}", axis=1)
     case_sv_cna = case_sv_cna.loc[case_sv_cna.index.repeat(case_sv_cna['cn_rep'])].copy()
-    case_sv_cna = case_sv_cna.drop(columns=['cn', 'allele', 'cn_rep'])
-    case_sv_cna = case_sv_cna.rename(columns={'id': 'cna_id'})
+    case_sv_cna = case_sv_cna.drop(columns=['cn', 'cn_rep'])
+    case_sv_cna = case_sv_cna.rename(columns={'id': 'cna_id', 'allele': 'major_minor'})
 
     # Match SV and SNV
     sv_range:pd.DataFrame = case_sv_cna[['chrom', 'start', 'end', 'cna_id']].drop_duplicates().reset_index(drop=True)
@@ -2645,9 +2645,10 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
     # Compute VAFs
     ## Set the order of the events
-    sv_events:pd.DataFrame = case_sv_cna[['svclass', 'cna_id']].rename(columns={'svclass': 'class'})
+    sv_events:pd.DataFrame = case_sv_cna[['svclass', 'cna_id', 'major_minor']].rename(columns={'svclass': 'class'})
     snv_events:pd.DataFrame = snv_ann[['cna_id', 'snv_id']].copy()
     snv_events['class'] = 'MUT'
+    snv_events['major_minor'] = pd.NA
     random_order_event:pd.DataFrame = pd.concat([sv_events, snv_events], ignore_index=True)
     random_order_event = random_order_event.sample(frac=1, random_state=42).reset_index(drop=True)
 
@@ -2655,7 +2656,7 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
     def assign_alleles(x) -> list:
         if str(x).startswith("xX"):
             if gender == "F":
-                return ["allele_1", "allele_2"]
+                return ["allele_1_minor", "allele_2_major"]
             else:
                 return ["allele_1"]
         elif str(x).startswith("xY"):
@@ -2664,10 +2665,11 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
             else:
                 return ["allele_1"]
         else:
-            return ["allele_1", "allele_2"]
+            return ["allele_1_minor", "allele_2_major"]
     cna_ids:list = ["no_cna"] + case_sv_cna["cna_id"].unique().tolist()
     allele_ploidy:dict = {cna_id: assign_alleles(cna_id) for cna_id in cna_ids}
     allele_ploidy_original:dict = copy.deepcopy(allele_ploidy)
+    allele_ploidy_normal:dict = copy.deepcopy(allele_ploidy)
 
     ## Create a dict for each cna and allele
     mut_dict:dict = {cna_id: {} for cna_id in cna_ids}
@@ -2677,15 +2679,17 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
         f_class:str = random_order_event.loc[i, "class"]
         f_cna_id:str = random_order_event.loc[i, "cna_id"]
         f_snv_id:str = random_order_event.loc[i, "snv_id"]
-
-        # Choose a random allele
-        available_alleles:list = allele_ploidy.get(f_cna_id)
-        if not available_alleles:
-            continue
-        allele:str = random.choice(available_alleles)
+        f_major_minor:str = random_order_event.loc[i, "major_minor"]
 
         # MUTATION CASE
         if f_class == "MUT":
+            ### Choose a random allele
+            available_alleles:list = allele_ploidy.get(f_cna_id)
+            if not available_alleles:
+                continue
+            allele:str = random.choice(available_alleles)
+            
+            ### Add the mutation
             mut_df:pd.DataFrame = pd.DataFrame({"id": [f_snv_id]})
             if allele not in mut_dict[f_cna_id]:
                 mut_dict[f_cna_id][allele] = mut_df
@@ -2694,9 +2698,19 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
         # DUPLICATION CASE
         elif f_class == "DUP":
+            ### Select the allele to be duplicated
+            if len(allele_ploidy_normal[f_cna_id]) == 1:
+                available_alleles:list = allele_ploidy.get(f_cna_id)
+                if not available_alleles:
+                    continue
+                allele:str = random.choice(available_alleles)
+            else:
+                major_minor_alleles:list = [a for a in allele_ploidy[f_cna_id] if re.search(f_major_minor, a)]
+                allele:str = random.choice(major_minor_alleles)
+
             ### Update the number of alleles
             new_len:int = len(allele_ploidy_original[f_cna_id]) + 1
-            allele_ploidy_original[f_cna_id] = [f"allele_{j}" for j in range(1, new_len + 1)]
+            allele_ploidy_original[f_cna_id].append(f"allele_{new_len}_{f_major_minor}")
             allele_ploidy[f_cna_id].append(allele_ploidy_original[f_cna_id][-1])
 
             ### Select the new allele
@@ -2708,9 +2722,20 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
         # DELETION CASE
         elif f_class == "DEL":
+            ### Select the allele to be deleted
+            if len(allele_ploidy_normal[f_cna_id]) == 1:
+                available_alleles:list = allele_ploidy.get(f_cna_id)
+                if not available_alleles:
+                    continue
+                allele:str = random.choice(available_alleles)
+            else:
+                major_minor_alleles:list = [a for a in allele_ploidy[f_cna_id] if re.search(f_major_minor, a)]
+                allele:str = random.choice(major_minor_alleles)
+        
             ### Update the number of alleles
             if allele in allele_ploidy[f_cna_id]:
                 allele_ploidy[f_cna_id].remove(allele)
+
             ### Remove the mutations in that allele
             mut_dict[f_cna_id].pop(allele, None)
 
@@ -2736,7 +2761,7 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
     ## Simulate base VAFs and adjust
     nit_perc:float = 1-nit
-    vaf:np.array = np.random.normal(loc=1, scale=0.15, size=len(mut_dict_df))
+    vaf:np.array = np.random.normal(loc=0.9, scale=0.15, size=len(mut_dict_df))
     vaf:list = list(vaf * (mut_dict_df["n_alleles"] / mut_dict_df["total_allele"]) * nit_perc)
     vaf = [v if v < 1 else 1 - np.random.normal(loc=0.1, scale=0.03) for v in vaf]
     vaf = [round(v, ndigits=2) for v in vaf]
