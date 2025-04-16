@@ -1908,7 +1908,7 @@ def assign_cna_plot_color(y) -> str:
     """
     Asign a color to CNA segements depending on the copy number
     """
-    
+    y = int(y)
     if y == 1:
         return "Normal"
     elif y > 1:
