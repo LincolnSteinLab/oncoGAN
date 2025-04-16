@@ -1982,6 +1982,7 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> Non
         var_name='cn',
         value_name='y'
     )
+    cna_profile_long = cna_profile_long[cna_profile_long['y'].notna()]
     ### SVs
     ymax = max(cna_profile_long['y'])
     sv_profile_long['overlap'] = sv_profile_long['start'] <= sv_profile_long['end'].shift()
@@ -2055,7 +2056,7 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> Non
     for x in chrom_vlines['cumlength_end']:
         plt.axvline(x=x, color='gray', linewidth=0.2, linestyle='--')
     ## Calculate ymax for setting y-axis limits and label positions
-    ymax:int = cna_profile_long['y'].max()
+    ymax:int = int(cna_profile_long['y'].max())
     plt.ylim(-0.5, ymax + 2.2)
     plt.yticks(range(0,ymax+1))
     ## Calculate chromosome label positions
@@ -2589,6 +2590,35 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx=0, prefix=None) -> pd
 
     return(case_sv)
 
+def fix_sexual_chrom_cna_sv(case_cna, case_sv) -> tuple:
+    
+    """
+    This function update sexual chromosomes to have only one allele
+    """
+
+    # Remove alleles in the CNA dataset
+    case_cna['fix_male_cna'] = np.random.choice(['minor', 'major'], size=len(case_cna), replace=True)
+    case_cna['fix_male_cna'] = np.where(case_cna['chrom'].isin(['X', 'Y']),
+                                        np.where(case_cna['minor_cn'] == 1, 
+                                                 'minor',
+                                                 case_cna['fix_male_cna']),
+                                        '.')
+    case_cna['major_cn'] = np.where(case_cna['fix_male_cna'] == 'major', np.nan, case_cna['major_cn'])
+    case_cna['minor_cn'] = np.where(case_cna['fix_male_cna'] == 'minor', np.nan, case_cna['minor_cn'])
+
+    # Remove alleles in the SV dataset
+    case_sv = case_sv.merge(case_cna[['donor_id', 'study', 'id', 'fix_male_cna']],
+                            left_on=['donor_id', 'tumor', 'id'],
+                            right_on=['donor_id', 'study', 'id'],
+                            how='left')
+    case_sv = case_sv[case_sv['allele'] != case_sv['fix_male_cna']]
+
+    # Drop temporary columns
+    case_cna = case_cna.drop(columns=['fix_male_cna'])
+    case_sv = case_sv.drop(columns=['fix_male_cna'])
+
+    return(case_cna, case_sv)
+
 def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
     """
@@ -2960,6 +2990,10 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx=idx+1)
 
+            # Sexual chrom must have only one allele when sex is male
+            if gender == "M":
+                case_cna, case_sv = fix_sexual_chrom_cna_sv(case_cna, case_sv)
+
             # Update mutation VAFs according to CNAs
             if simulateMuts:
                 vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
@@ -2991,7 +3025,7 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
 
             # Save simulations
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
-            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
+            case_sv.rename(columns={'tumor':'study'}).to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
 @click.command(name="vcfGANerator-custom")
 @click.option("-@", "--cpus",
@@ -3173,6 +3207,10 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], cna_sv_tumor, svModel, gender, prefix=prefix)
+
+            # Sexual chrom must have only one allele when sex is male
+            if gender == "M":
+                case_cna, case_sv = fix_sexual_chrom_cna_sv(case_cna, case_sv)
             
             # Update mutation VAFs according to CNAs
             vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
@@ -3204,7 +3242,7 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
 
             # Save simulations
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
-            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
+            case_sv.rename(columns={'tumor':'study'}).to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
