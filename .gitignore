@@ -1,6 +1,6 @@
 **/.DS_Store
 **/__pycache__
-**/test
+simulating/test
 simulating/trained_models
 simulating/requirements/torch-2.1.0+cpu.cxx11.abi-cp310-cp310-linux_x86_64.whl
 deeptumour/trained_models
