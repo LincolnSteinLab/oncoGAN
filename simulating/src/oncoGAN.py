@@ -1849,6 +1849,132 @@ def combine_same_cna_events(cnas_df) -> pd.DataFrame:
     
     return(combined_df)
 
+def generate_driver_cna_major_cn(cn) -> int:
+
+    """Transform driver CN number into the major/minor allele style"""
+
+    if cn == -2:
+        return 0
+    elif cn == -1:
+        return 1
+    else:
+        return cn+1
+
+def generate_driver_cna_minor_cn(cn) -> int:
+
+    """Transform driver CN number into the major/minor allele style"""
+
+    if cn < 0:
+        return 0
+    else:
+        return 1
+
+def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
+
+    """Generates driver CNA events"""
+
+    cna_drivers:pd.DataFrame = pd.read_csv('/oncoGAN/trained_models/drivers/cna_drivers.csv')
+    cna_drivers = cna_drivers[cna_drivers['study'] == tumor].reset_index(drop=True)
+
+    # Randomly select events
+    cna_drivers.loc[:, 'to_simulate'] = cna_drivers['perc'].apply(lambda x: np.random.rand() < x)
+    cna_drivers = cna_drivers[cna_drivers['to_simulate']].reset_index(drop=True)
+
+    # If there are no events to simulate skip
+    if cna_drivers.empty:
+        return(case_cnas)
+
+    # Check if there are overlap events
+    range_dicts:dict = {}
+    for _,row in cna_drivers.iterrows():
+        range_dicts[row['range_id']] = row['overlap'].split(";")
+
+    removed_list:list = []
+    for range_id in cna_drivers['range_id']:
+        if range_id in removed_list:
+            continue
+        overlap_list:list = [range_id]
+        for all_range_id in range_dicts:
+            if range_id in range_dicts[all_range_id]:
+                overlap_list.append(all_range_id)
+        overlap_list = [i for i in overlap_list if i not in removed_list]
+        if len(overlap_list) > 1:
+            to_remove:str = random.choice(overlap_list)
+            cna_drivers = cna_drivers.loc[~(cna_drivers['range_id'] == to_remove)]
+            removed_list.append(to_remove)
+    cna_drivers = cna_drivers.reset_index(drop=True)
+
+    # Remove unnecessary columns
+    cna_drivers = cna_drivers.drop(columns=['perc', 'range_id', 'overlap', 'to_simulate'])
+
+    # Create major_cna and minor_cn columns
+    cna_drivers.loc[:, 'major_cn'] = cna_drivers['cna'].apply(lambda x: generate_driver_cna_major_cn(x))
+    cna_drivers.loc[:, 'minor_cn'] = cna_drivers['cna'].apply(lambda x: generate_driver_cna_minor_cn(x))
+
+    # Adapt dataframe format to somatic cna style
+    cna_drivers = cna_drivers.drop(columns=['cna'])
+    cna_drivers['id'] = 'driver'
+    cna_full:pd.DataFrame = pd.concat([case_cnas, cna_drivers])
+    cna_full = cna_full.sort_values(by=['chrom', 'start'], key=lambda chrom: chrom.map(sort_by_int_chrom)).reset_index(drop=True)
+
+    cna_full_updated:pd.DataFrame = pd.DataFrame()
+    for chrom, group in cna_full.groupby('chrom', sort=False):
+        group = group.reset_index(drop=True)
+        rows_to_drop:list = []
+        i:int = 0
+        while i < len(group):
+            if not pd.isna(group.loc[i, 'id']):
+                ## If the driver CNA is the first one on the chromosome
+                if i == 0:
+                    current_end:int = group.loc[i, 'end']
+                    for j in range(i + 1, len(group)):
+                        if group.loc[j, 'end'] < current_end:
+                            rows_to_drop.append(j)
+                        elif group.loc[j, 'end'] == current_end:
+                            rows_to_drop.append(j)
+                            break   
+                        else:
+                            group.loc[j, 'start'] = group.loc[i, 'end'] + 1
+                            break
+                ## If the driver CNA is the last one on the chromosome
+                elif i == len(group)-1:
+                    current_start:int = group.loc[i, 'start']
+                    for j in range(len(group)-2, -1, -1):
+                        if group.loc[j, 'start'] > current_start:
+                            rows_to_drop.append(j)
+                        elif group.loc[j, 'start'] == current_start:
+                            rows_to_drop.append(j)
+                            break   
+                        else:
+                            group.loc[j, 'end'] = group.loc[i, 'start'] - 1
+                            break
+                else:
+                    ## Update the start
+                    prev_end:int = group.loc[i - 1, 'end']
+                    group.loc[i, 'start'] = prev_end + 1
+
+                    ## Update the end
+                    current_end:int = group.loc[i, 'end']
+                    for j in range(i + 1, len(group)):
+                        if group.loc[j, 'end'] < current_end:
+                            rows_to_drop.append(j)
+                        elif group.loc[j, 'end'] == current_end:
+                            rows_to_drop.append(j)
+                            break   
+                        else:
+                            group.loc[i, 'end'] = group.loc[j, 'start'] - 1
+                            break
+                i += 1
+            else:
+                i += 1
+        group = group.drop(rows_to_drop).reset_index(drop=True)
+        cna_full_updated = pd.concat([cna_full_updated, group]).reset_index(drop=True)
+
+    # Fix the start of driver CNAs if they are the first event of the chromosome
+    cna_full_updated.loc[cna_full_updated['start'] == 0, 'start'] = 1
+
+    return(cna_full_updated)
+
 def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) -> pd.DataFrame:
     
     """
@@ -1885,6 +2011,12 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) ->
     case_cnas = assign_chromosome(case_cnas, cna=True, gender=gender)
     case_cnas = adjust_cna_position(case_cnas, gender)
     
+    # Sort by real integer chrom order
+    case_cnas = case_cnas.sort_values(by=['chrom', 'start'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
+
+    # Add driver events
+    case_cnas = add_driver_cnas(case_cnas, tumor)
+
     # Add donor id
     if prefix == None:
         case_cnas["donor_id"] = f"sim{idx}"
@@ -1894,9 +2026,6 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) ->
 
     # Combine same CNAs events
     case_cnas = combine_same_cna_events(case_cnas)
-
-    # Sort by real integer chrom order
-    case_cnas = case_cnas.sort_values(by=['chrom', 'start'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
 
     # Create an ID for each CNA segment
     case_cnas['id'] = 'cna' + case_cnas.index.astype(str)
