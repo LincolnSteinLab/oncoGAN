@@ -135,13 +135,13 @@ def get_mov(info_df:pd.DataFrame, mut:pd.Series, allele) -> int:
         last_row:pd.Series = info_df_filtered.tail(1).iloc[0]
         return last_row['mov']
 
-def update_next_movs(info_df:pd.DataFrame, mut:pd.Series, mov2up:int) -> pd.DataFrame:
+def update_next_movs(info_df:pd.DataFrame, chrom:str, allele:str, pos:int, mov2up:int) -> pd.DataFrame:
     
     """
     Update changes in the reference genome length
     """
 
-    muts2up:pd.Index = info_df[(info_df['chrom'].astype(str) == str(mut['chrom'])) & (info_df['allele'] == mut['al']) & (info_df['pos'] > mut['pos'])].index
+    muts2up:pd.Index = info_df[(info_df['chrom'].astype(str) == str(chrom)) & (info_df['allele'] == allele) & (info_df['pos'].astype(int) > pos)].index
     info_df.loc[muts2up, 'mov'] += mov2up
 
     return(info_df)
@@ -225,7 +225,7 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
                     somatic_mov -= len(mut['ref'])-1
                     somatic_info = pd.concat([somatic_info, pd.DataFrame(data={'chrom': [mut['chrom']], 'pos': [mut['pos']], 'allele': [event['allele']], 'mov': [somatic_mov]})])
                     somatic_info = somatic_info.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
-                    somatic_info = update_next_movs(somatic_info, mut, -(len(mut['ref'])-1))
+                    somatic_info = update_next_movs(somatic_info, mut['chrom'], event['allele'], mut['pos'], -(len(mut['ref'])-1))
                     continue
             elif (len(mut['alt']) > 1): #INS
                 if mut['ref'][0] != updated_chrom[position]:
@@ -236,7 +236,7 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
                     somatic_mov += len(mut['alt'])-1
                     somatic_info = pd.concat([somatic_info, pd.DataFrame(data={'chrom': [mut['chrom']], 'pos': [mut['pos']], 'allele': [event['allele']], 'mov': [somatic_mov]})])
                     somatic_info = somatic_info.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
-                    somatic_info = update_next_movs(somatic_info, mut, len(mut['alt'])-1)
+                    somatic_info = update_next_movs(somatic_info, mut['chrom'], event['allele'], mut['pos'], len(mut['alt'])-1)
                     continue
         elif event['class'] == "DEL":
             ## Deletions are processed later
