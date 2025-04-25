@@ -177,24 +177,28 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
                     continue
                 else:
                     updated_chrom = updated_chrom[:position] + mut['alt'] + updated_chrom[position+1:]
+                    genome[chrom_key] = updated_chrom
                     continue
             elif ((len(mut['ref']) == 2) and (len(mut['alt']) == 2)): #DNP
                 if mut['ref'] != updated_chrom[position:position+2]:
                     continue
                 else:
                     updated_chrom = updated_chrom[:position] + mut['alt'] + updated_chrom[position+2:]
+                    genome[chrom_key] = updated_chrom
                     continue
             elif ((len(mut['ref']) == 3) and (len(mut['alt']) == 3)): #TNP
                 if mut['ref'][0] != updated_chrom[position:position+3]:
                     continue
                 else:
                     updated_chrom = updated_chrom[:position] + mut['alt'] + updated_chrom[position+3:]
+                    genome[chrom_key] = updated_chrom
                     continue
             elif (len(mut['ref']) > 1): #DEL
                 if mut['ref'][0] != updated_chrom[position]:
                     continue
                 else:
                     updated_chrom = updated_chrom[:position+1] + updated_chrom[position+len(mut['ref']):]
+                    genome[chrom_key] = updated_chrom
                     somatic_mov -= len(mut['ref'])-1
                     somatic_info = pd.concat([somatic_info, pd.DataFrame(data={'chrom': [mut['chrom']], 'pos': [mut['pos']], 'allele': [event['allele']], 'mov': [somatic_mov]})])
                     somatic_info = somatic_info.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
@@ -205,12 +209,12 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
                     continue
                 else:
                     updated_chrom = updated_chrom[:position] + mut['alt'] + updated_chrom[position+1:]
+                    genome[chrom_key] = updated_chrom
                     somatic_mov += len(mut['alt'])-1
                     somatic_info = pd.concat([somatic_info, pd.DataFrame(data={'chrom': [mut['chrom']], 'pos': [mut['pos']], 'allele': [event['allele']], 'mov': [somatic_mov]})])
                     somatic_info = somatic_info.sort_values(by=['chrom', 'pos'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
                     somatic_info = update_next_movs(somatic_info, mut, len(mut['alt'])-1)
                     continue
-            genome[chrom_key] = updated_chrom
         elif event['class'] == "DEL":
             ## Deletions are processed later
             continue
