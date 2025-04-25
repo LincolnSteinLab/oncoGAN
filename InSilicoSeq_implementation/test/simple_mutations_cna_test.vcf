@@ -23,9 +23,7 @@
 1	10107586	snv13_sim1	C	CAG	.	.	AF=0.87;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
 1	10107593	snv14_sim1	C	T	.	.	AF=0.45;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
 1	10107596	snv15_sim1	G	A	.	.	AF=0.52;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
-1	10107603	snv16_sim1	T	A	.	.	AF=0.28;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
 1	10107609	snv17_sim1	G	GAT	.	.	AF=0.94;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
-1	10107613	snv18_sim1	T	TAGA	.	.	AF=0.86;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
 1	15642830	snv19_sim1	C	T	.	.	AF=0.37;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
 1	18022276	snv20_sim1	G	A	.	.	AF=0.49;MS=SBS1;TA=2;AL=allele_3_major;CN=cna1
 1	18139559	snv21_sim1	A	G	.	.	AF=0.21;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1

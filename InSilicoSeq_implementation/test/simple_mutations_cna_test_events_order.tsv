@@ -1,5 +1,5 @@
 index	class	cna_id	major_minor	event_id	allele	from_allele	to_allele
-1	MUT	x1_cna1	.	snv18	allele_2_major	.	.
+1	MUT	x1_cna1	.	snv18	allele_1_minor	.	.
 2	MUT	no_cna	.	snv4	allele_2_major	.	.
 3	MUT	x1_cna1	.	snv17	allele_2_major	.	.
 4	MUT	x1_cna1	.	snv9	allele_2_major	.	.
@@ -7,11 +7,11 @@ index	class	cna_id	major_minor	event_id	allele	from_allele	to_allele
 6	MUT	x1_cna1	.	snv10	allele_2_major	.	.
 7	MUT	no_cna	.	snv3	allele_1_minor	.	.
 8	MUT	x1_cna1	.	snv13	allele_2_major	.	.
-9	DEL	x1_cna1	minor	sv1	.	allele_1_minor	.
-10	MUT	x1_cna1	.	snv16	allele_2_major	.	.
-11	DUP	x1_cna1	major	sv0	.	allele_2_major	allele_3_major
-12	MUT	x1_cna1	.	snv20	allele_3_major	.	.
-13	MUT	no_cna	.	snv6	allele_1_minor	.	.
+9	MUT	x1_cna1	.	snv16	allele_1_minor	.	.
+10	DEL	x1_cna1	minor	sv1	.	allele_1_minor	.
+11	MUT	no_cna	.	snv6	allele_1_minor	.	.
+12	DUP	x1_cna1	major	sv0	.	allele_2_major	allele_3_major
+13	MUT	x1_cna1	.	snv20	allele_3_major	.	.
 14	MUT	no_cna	.	snv1	allele_2_major	.	.
 15	MUT	x1_cna1	.	snv19	allele_2_major	.	.
 16	MUT	x1_cna1	.	snv12	allele_3_major	.	.
