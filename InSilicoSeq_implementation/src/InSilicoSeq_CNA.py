@@ -106,6 +106,22 @@ def introduce_polymorphisms(genome:Fasta, dbsnp:pd.DataFrame) -> tuple:
 
     return(updated_genome, dbsnp, updated_positions)
 
+def initialize_genome(genome:Fasta) -> tuple:
+
+    """
+    Initialize the genome with the two alleles
+    """
+
+    updated_genome:dict = {}
+    updated_positions:pd.DataFrame = pd.DataFrame()
+    for chrom in genome.keys():
+        updated_genome[f'{chrom}_allele_2_major'] = str(genome[chrom])
+        updated_genome[f'{chrom}_allele_1_minor'] = str(genome[chrom])
+        updated_positions = pd.concat([updated_positions, pd.DataFrame(data={'chrom': [chrom], 'pos': [0], 'allele': ['allele_2_major'], 'mov': [0]})])
+        updated_positions = pd.concat([updated_positions, pd.DataFrame(data={'chrom': [chrom], 'pos': [0], 'allele': ['allele_1_minor'], 'mov': [0]})])
+
+    return(updated_genome, updated_positions)
+
 def get_mov(info_df:pd.DataFrame, mut:pd.Series, allele) -> int:
 
     """
@@ -148,7 +164,7 @@ def get_sv_mov(germ_info:pd.DataFrame, somatic_info:pd.DataFrame, sv_info:pd.Dat
 
     return(start, end, sv_mov)
 
-def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFrame,  events:click.Path, svs:click.Path, outDir:click.Path, donor_id:str, refGenome:click.Path) -> pd.DataFrame:
+def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFrame, events:click.Path, svs:click.Path, outDir:click.Path, donor_id:str, refGenome:click.Path) -> pd.DataFrame:
 
     """
     Add mutations to the custom reference genome
@@ -164,8 +180,11 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
         if event['class'] == "MUT":
             mut:pd.Series = mutations[mutations['snv_id'] == event['event_id']].iloc[0]
 
-            #3 Extract position modifiers
-            germ_mov:int = get_mov(germ_info, mut, event['allele'])
+            ## Extract position modifiers
+            if germ_info is None:
+                germ_mov:int = 0
+            else:
+                germ_mov:int = get_mov(germ_info, mut, event['allele'])
             somatic_mov:int = get_mov(somatic_info, mut, event['allele'])
             position:int = mut['pos']+somatic_mov+germ_mov-1
 
@@ -332,7 +351,8 @@ def insilicoseq_docker(cpus:int, refGenome:click.Path, cov:int, model:str, outDi
               help="Reference genome in fasta format")
 @click.option("--dbSNP", "dbSNP",
               type=click.Path(exists=True, file_okay=True),
-              required=True,
+              required=False,
+              default=None,
               help="VCF file containing the germline mutations to be added to the reference genome")
 @click.option("-c", "--coverage",
               type=click.INT,
@@ -365,12 +385,16 @@ def InSilicoSeq_CNA(cpus, input, events, sv, outDir, refGenome, dbSNP, coverage,
     # Load reference genome
     genome:Fasta = Fasta(refGenome)
 
-    # Load dbSNP
-    dbsnp_vcf:pd.DataFrame = readVCF(dbSNP, dbSNP=True)
+    # dbSNP
+    if dbSNP is not None:
+        ## Load dbSNP
+        dbsnp_vcf:pd.DataFrame = readVCF(dbSNP, dbSNP=True)
 
-    # Add dbSNP polymorphisms
-    genome, dbsnp_vcf, updated_positions = introduce_polymorphisms(genome, dbsnp_vcf)
-    dbsnp_vcf.to_csv(os.path.join(outDir, os.path.basename(dbSNP).replace('.vcf', '_with_alleles.tsv')), sep='\t', index=False)
+        ## Add dbSNP polymorphisms
+        genome, dbsnp_vcf, updated_positions = introduce_polymorphisms(genome, dbsnp_vcf)
+        dbsnp_vcf.to_csv(os.path.join(outDir, os.path.basename(dbSNP).replace('.vcf', '_with_alleles.tsv')), sep='\t', index=False)
+    else:
+        genome, updated_positions = initialize_genome(genome)
 
     # Add mutations
     introduce_mutations(genome, vcf, updated_positions, events, sv, outDir, donor_id, refGenome)
