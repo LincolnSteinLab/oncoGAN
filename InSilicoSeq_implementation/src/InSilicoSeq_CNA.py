@@ -175,10 +175,14 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
     sv_df:pd.DataFrame = pd.read_csv(svs, delimiter='\t')
 
     # Follow the order of events to introduce the mutations and CNAs
-    somatic_info:pd.DataFrame = pd.DataFrame(columns=list(germ_info.columns))
+    somatic_info:pd.DataFrame = pd.DataFrame(columns=['chrom', 'pos', 'allele', 'mov'])
     for _,event in events_df.iterrows():
         if event['class'] == "MUT":
-            mut:pd.Series = mutations[mutations['snv_id'] == event['event_id']].iloc[0]
+            try:
+                mut:pd.Series = mutations[mutations['snv_id'] == event['event_id']].iloc[0]
+            except IndexError:
+                ## In case the mutation is located in a deleted allele
+                continue
 
             ## Extract position modifiers
             if germ_info is None:
@@ -245,9 +249,14 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
             genome[dup_chrom_key] = genome[chrom_key]
 
             ## Update position modifiers for the new allele
-            tmp:pd.DataFrame = somatic_info[(somatic_info['chrom'] == chrom) & (somatic_info['allele'] == event['from_allele'])]
-            tmp['allele'] = event['to_allele']
-            somatic_info = pd.concat([somatic_info, tmp])
+            ### Germline
+            tmp_germ:pd.DataFrame = germ_info[(germ_info['chrom'].astype(str) == chrom) & (germ_info['allele'] == event['from_allele'])]
+            tmp_germ.loc[:,'allele'] = event['to_allele']
+            germ_info = pd.concat([germ_info, tmp_germ]).reset_index(drop=True)
+            ### Somatic
+            tmp_som:pd.DataFrame = somatic_info[(somatic_info['chrom'].astype(str) == chrom) & (somatic_info['allele'] == event['from_allele'])]
+            tmp_som.loc[:,'allele'] = event['to_allele']
+            somatic_info = pd.concat([somatic_info, tmp_som]).reset_index(drop=True)
 
     # Introduce the CNA into the reference genome
     sv_info:pd.DataFrame = pd.DataFrame(columns=list(germ_info.columns))
