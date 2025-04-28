@@ -164,7 +164,7 @@ def get_sv_mov(germ_info:pd.DataFrame, somatic_info:pd.DataFrame, sv_info:pd.Dat
 
     return(start, end, sv_mov)
 
-def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFrame, events:click.Path, svs:click.Path, outDir:click.Path, donor_id:str, refGenome:click.Path) -> pd.DataFrame:
+def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFrame, events:click.Path, svs:click.Path, outDir:click.Path, donor_id:str) -> pd.DataFrame:
 
     """
     Add mutations to the custom reference genome
@@ -281,15 +281,13 @@ def introduce_mutations(genome:dict, mutations:pd.DataFrame, germ_info:pd.DataFr
             sv_info = pd.concat([sv_info, pd.DataFrame(data={'chrom': [chrom], 'pos': [end], 'allele': [parent_allele], 'mov': [parent_mov]})])
 
     # Write the new genome
-    chromosomes:pd.DataFrame = pd.read_csv(f'{refGenome}.fai', delimiter="\t", usecols=[0], names=['chrom'])
-    chromosomes:list = list(chromosomes['chrom'])
-    for chrom in chromosomes:
-        final_genome_path:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_genome{chrom}.fa")
-        chrom_abundance:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_abundance{chrom}.txt")
-        with open(final_genome_path, 'w') as final_genome, open(chrom_abundance, 'w') as abundance:
-            final_genome.write(f'>{chrom}_allele_2_major\n{genome[f"{chrom}_allele_2_major"]}\n')
-            final_genome.write(f'>{chrom}_allele_1_minor\n{genome[f"{chrom}_allele_1_minor"]}\n')
-            abundance.write(f'{chrom}_allele_2_major\t0.5\n{chrom}_allele_1_minor\t0.5\n')
+    whole_genome:str = ''
+    for chrom in genome.keys():
+        if ('allele_2_major' in chrom) or ('allele_1_minor' in chrom):
+            whole_genome += genome[chrom] + 'N'*1000
+    custom_genome_path:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_genome.fa")
+    with open(custom_genome_path, 'w') as custom_genome:
+        custom_genome.write(f'>custom_genome\n{whole_genome}\n')
 
 def insilicoseq_docker(cpus:int, refGenome:click.Path, cov:int, model:str, outDir:click.Path, donor_id:str) -> None:
 
@@ -297,39 +295,32 @@ def insilicoseq_docker(cpus:int, refGenome:click.Path, cov:int, model:str, outDi
     Run InSilicoSeq independently for each chromosome
     """
 
+    custom_genome_path:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_genome.fa")
+
+    # Calculate number of reads to simulate based on the coverage and the length of the genome
     chromosomes = pd.read_csv(f'{refGenome}.fai', delimiter="\t", usecols=[0,1], names=['chrom', 'length'])
-    for _,row in chromosomes.iterrows():
-        chrom = str(row['chrom'])
-        chrom_fasta:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_genome{chrom}.fa")
-        chrom_abundance:click.Path = os.path.join(outDir, f"{donor_id}_tmp", f"{donor_id}_abundance{chrom}.txt")
+    total_len:int = chromosomes['length'].sum()
+    model_read_length:dict = {"HiSeq":125,"NextSeq":300,"NovaSeq":150,"MiSeq":300}
+    n_reads:int = round((cov*total_len)/model_read_length[model])
 
-        # Calculate number of reads
-        model_read_length:dict = {"HiSeq":125,"NextSeq":300,"NovaSeq":150,"MiSeq":300}
-        n_reads:int = round((cov*int(row['length']))/model_read_length[model])
+    # Command
+    cmd:list = [
+        "iss", "generate",
+        "--cpus", f"{cpus}",
+        "--genomes", custom_genome_path,
+        "--output", os.path.join(outDir, f"{donor_id}_fastq", f"{donor_id}_reads"),
+        "--n_reads", str(n_reads),
+        "--model", f"{model}",
+        "--gc_bias", "--compress", "--store_mutations"]
+    print(' '.join(cmd))
+    subprocess.run(cmd, check=True)
 
-        # Check if the genome exists
-        if not os.path.exists(chrom_fasta):
-            continue
-
-        # Command
-        cmd:list = [
-            "iss", "generate",
-            "--cpus", f"{cpus}",
-            "--genomes", chrom_fasta,
-            "--abundance_file", chrom_abundance,
-            "--output", os.path.join(outDir, f"{donor_id}_fastq_by_chrom", f"{donor_id}_reads_{chrom}"),
-            "--n_reads", f"{n_reads}",
-            "--model", f"{model}",
-            "--gc_bias", "--compress", "--store_mutations"]
-        print(' '.join(cmd))
-        subprocess.run(cmd, check=True)
-
-        # Extract error mutations added by InSilicoSeq
-        os.rename(os.path.join(outDir, f"{donor_id}_fastq_by_chrom", f"{donor_id}_reads_1.vcf.gz"), os.path.join(outDir, f"{donor_id}_cna_error_muts.vcf.gz"))
-        
-        # Remove tmp files
-        os.remove(chrom_fasta)
-        os.remove(chrom_abundance)
+    # Extract error mutations added by InSilicoSeq
+    os.rename(os.path.join(outDir, f"{donor_id}_fastq", f"{donor_id}_reads.vcf.gz"), os.path.join(outDir, f"{donor_id}_cna_error_muts.vcf.gz"))
+    
+    # Remove tmp files
+    os.remove(custom_genome_path)
+    os.remove(os.path.join(outDir, f"{donor_id}_fastq", f"{donor_id}_reads_abundance.txt"))
 
 @click.command(name="InSilicoSeq-CNA")
 @click.option("-@", "--cpus",
@@ -389,7 +380,7 @@ def InSilicoSeq_CNA(cpus, input, events, sv, outDir, refGenome, dbSNP, coverage,
     if not os.path.exists(outDir):
         os.makedirs(outDir)
     os.makedirs(os.path.join(outDir, f"{donor_id}_tmp"))
-    os.makedirs(os.path.join(outDir, f"{donor_id}_fastq_by_chrom"))
+    os.makedirs(os.path.join(outDir, f"{donor_id}_fastq"))
     
     # Load reference genome
     genome:Fasta = Fasta(refGenome)
@@ -406,7 +397,7 @@ def InSilicoSeq_CNA(cpus, input, events, sv, outDir, refGenome, dbSNP, coverage,
         genome, updated_positions = initialize_genome(genome)
 
     # Add mutations
-    introduce_mutations(genome, vcf, updated_positions, events, sv, outDir, donor_id, refGenome)
+    introduce_mutations(genome, vcf, updated_positions, events, sv, outDir, donor_id)
 
     # Run InsilicoSeq 
     insilicoseq_docker(cpus, refGenome, coverage, model, outDir, donor_id)
@@ -416,17 +407,17 @@ def InSilicoSeq_CNA(cpus, input, events, sv, outDir, refGenome, dbSNP, coverage,
 
     # Concatenate fastqs
     ## R1
-    r1_files:list = sorted(glob.glob(os.path.join(outDir, f"{donor_id}_fastq_by_chrom", "*R1.fastq.gz")))
+    r1_files:list = sorted(glob.glob(os.path.join(outDir, f"{donor_id}_fastq", "*R1.fastq.gz")))
     with open(os.path.join(outDir, f"{donor_id}_cna_R1.fastq.gz"), 'w') as out_file:
         subprocess.run(["cat"] + r1_files, stdout=out_file, check=True)
     
     ## R2
-    r2_files:list = sorted(glob.glob(os.path.join(outDir, f"{donor_id}_fastq_by_chrom", "*R2.fastq.gz")))
+    r2_files:list = sorted(glob.glob(os.path.join(outDir, f"{donor_id}_fastq", "*R2.fastq.gz")))
     with open(os.path.join(outDir, f"{donor_id}_cna_R2.fastq.gz"), 'w') as out_file:
         subprocess.run(["cat"] + r2_files, stdout=out_file, check=True)
     
     ## Remove individual fastqs
-    subprocess.run(["rm", "-rf", os.path.join(outDir, f"{donor_id}_fastq_by_chrom")], check=True)
+    subprocess.run(["rm", "-rf", os.path.join(outDir, f"{donor_id}_fastq")], check=True)
 
 if __name__ == '__main__':
     InSilicoSeq_CNA()
