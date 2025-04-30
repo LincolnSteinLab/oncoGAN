@@ -1,0 +1,4 @@
+[submodule "deeptumour"]
+	path = deeptumour
+	url = https://github.com/LincolnSteinLab/DeepTumour.git
+	branch = main
