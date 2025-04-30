@@ -45,7 +45,7 @@ docker pull oicr/oncogan:training_v0.2
 docker pull oicr/oncogan:simulating_v0.2
 
 # DeepTumour
-docker pull oicr/oncogan:deeptumour
+docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0
 ```
 
 ### Singularity
@@ -60,12 +60,12 @@ singularity build oncogan_training_v0.2.sif docker://oicr/oncogan:training_v0.2
 singularity build oncogan_simulating_v0.2.sif docker://oicr/oncogan:simulating_v0.2
 
 # DeepTumour
-singularity build deeptumour.sif docker://oicr/oncogan:deeptumour
+singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0
 ```
 
 ### Download models
 
-OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
+OncoGAN trained models for the eight tumor types can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
 
 ## Generate synthetic VCFs
 
@@ -339,18 +339,29 @@ jupyter --help
 [DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/14889626). To use them:
 
 ```bash
-docker run --rm -u $(id -u):$(id -g) \
-           -v $(pwd):/home \
-           -v /PATH_TO_DEEPTUMOUR_MODEL/:/DeepTumour/trained_models \
-           -v /PATH_TO_HG19_DIR/:/reference
-           -it oicr/oncogan:deeptumour --help
+docker run --rm ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
+
+docker run --rm \
+           -v $(pwd):/WORKDIR \
+           -v [PATH_TO_DEEPTUMOUR_MODEL]:/home/deeptumour/src/trained_models \
+           -v [HG19_DIR]:/reference \
+           -it -a stdout -a stderr \
+           ghcr.io/lincolnsteinlab/deeptumour:3.0 [OPTIONS] \
+                                                  --reference /reference/hg19.fa \
+                                                  --stdout \
+                                                  > [OUTPUT_JSON]
+# (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
 
 # or
+singularity run docker://ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
 
-singularity exec -H ${pwd}:/home \
-            -B /PATH_TO_DEEPTUMOUR_MODEL/:/DeepTumour/trained_models \
-            -B /PATH_TO_HG19_DIR/:/reference
-            /PATH_TO/oncogan_deeptumour.sif DeepTumour.py --help
+singularity run \
+            -B $(pwd):/WORKDIR \
+            -B [PATH_TO_DEEPTUMOUR_MODEL]:/home/deeptumour/src/trained_models \
+            -B [HG19_DIR]:/reference \
+            docker://ghcr.io/lincolnsteinlab/deeptumour:3.0 [OPTIONS] \
+                                                            --reference /reference/hg19.fa
+# (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
 
 # Predict cancer type from a VCF file using DeepTumour
 
@@ -361,5 +372,6 @@ singularity exec -H ${pwd}:/home \
 #   --hg38              Use this tag if your VCF is in hg38 coordinates
 #   --keep_input        Use this tag to also save DeepTumour input as a csv file
 #   --outDir DIRECTORY  Directory where save DeepTumour results. Default is the current directory
+#   --stdout            Use this tag to print the results to stdout instead of saving them to a file
 #   --help              Show this message and exit.
 ```
