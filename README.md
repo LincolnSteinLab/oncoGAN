@@ -45,7 +45,7 @@ docker pull oicr/oncogan:training_v0.2
 docker pull oicr/oncogan:simulating_v0.2
 
 # DeepTumour
-docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0
+docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0.1
 ```
 
 ### Singularity
@@ -54,18 +54,18 @@ If you don't have singularity already installed in your system, please follow th
 
 ```bash
 # Training
-singularity build oncogan_training_v0.2.sif docker://oicr/oncogan:training_v0.2
+singularity pull docker://oicr/oncogan:training_v0.2
 
 # Simulating
-singularity build oncogan_simulating_v0.2.sif docker://oicr/oncogan:simulating_v0.2
+singularity pull docker://oicr/oncogan:simulating_v0.2
 
 # DeepTumour
-singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0
+singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0.1
 ```
 
 ### Download models
 
-OncoGAN trained models for the eight tumor types can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
+OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
 
 ## Generate synthetic VCFs
 
@@ -339,28 +339,22 @@ jupyter --help
 [DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/14889626). To use them:
 
 ```bash
-docker run --rm ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
-
 docker run --rm \
+           -u $(id -u):$(id -g) \
            -v $(pwd):/WORKDIR \
-           -v [PATH_TO_DEEPTUMOUR_MODEL]:/home/deeptumour/src/trained_models \
-           -v [HG19_DIR]:/reference \
+           -v /PATH_TO_DEEPTUMOUR_MODEL/:/home/deeptumour/src/trained_models \
+           -v /PATH_TO_HG19_DIR/:/reference \
            -it -a stdout -a stderr \
-           ghcr.io/lincolnsteinlab/deeptumour:3.0 [OPTIONS] \
-                                                  --reference /reference/hg19.fa \
-                                                  --stdout \
-                                                  > [OUTPUT_JSON]
-# (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
+           ghcr.io/lincolnsteinlab/deeptumour:3.0.1 --help
 
 # or
-singularity run docker://ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
 
-singularity run \
+singularity exec \
             -B $(pwd):/WORKDIR \
-            -B [PATH_TO_DEEPTUMOUR_MODEL]:/home/deeptumour/src/trained_models \
-            -B [HG19_DIR]:/reference \
-            docker://ghcr.io/lincolnsteinlab/deeptumour:3.0 [OPTIONS] \
-                                                            --reference /reference/hg19.fa
+            -B /PATH_TO_DEEPTUMOUR_MODEL//home/deeptumour/src/trained_models \
+            -B /PATH_TO_HG19_DIR/:/reference \
+            /PATH_TO/deeptumour_3.0.1.sif --help
+
 # (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
 
 # Predict cancer type from a VCF file using DeepTumour
