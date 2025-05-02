@@ -43,7 +43,7 @@ def convert_cna_to_bed(cna_file:click.Path) -> click.Path:
     cna = cna[['chrom', 'start', 'end', 'cn']]
     
     # Convert to BED format
-    bed_cna_path:click.Path = f"{os.path.splitext(cna_file)[0]}_cna.bed"
+    bed_cna_path:click.Path = f"{os.path.splitext(cna_file)[0]}.bed"
     cna.to_csv(bed_cna_path, sep="\t", index=False, header=False)
 
     # Tabix index the BED file
