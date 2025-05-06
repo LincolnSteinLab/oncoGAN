@@ -1869,7 +1869,7 @@ def generate_driver_cna_minor_cn(cn) -> int:
     else:
         return 1
 
-def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
+def add_driver_cnas(case_cnas, tumor, refGenome) -> pd.DataFrame:
 
     """Generates driver CNA events"""
 
@@ -1918,12 +1918,15 @@ def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
     cna_full = cna_full.sort_values(by=['chrom', 'start'], key=lambda chrom: chrom.map(sort_by_int_chrom)).reset_index(drop=True)
 
     cna_full_updated:pd.DataFrame = pd.DataFrame()
+    chrom_lengths:pd.DataFrame = pd.read_csv(f'{refGenome}.fai', delimiter='\t', names=['chrom', 'length'], usecols=[0,1])
     for chrom, group in cna_full.groupby('chrom', sort=False):
         group = group.reset_index(drop=True)
         rows_to_drop:list = []
+        rows_to_append:pd.DataFrame = pd.DataFrame()
         i:int = 0
         while i < len(group):
             if not pd.isna(group.loc[i, 'id']):
+                chrom_end:int = chrom_lengths.loc[chrom_lengths['chrom'].astype(str) == str(chrom), 'length'].reset_index(drop=True)[0]
                 ## If the driver CNA is the first one on the chromosome
                 if i == 0:
                     current_end:int = group.loc[i, 'end']
@@ -1939,6 +1942,7 @@ def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
                 ## If the driver CNA is the last one on the chromosome
                 elif i == len(group)-1:
                     current_start:int = group.loc[i, 'start']
+                    current_end:int = group.loc[i, 'end']
                     for j in range(len(group)-2, -1, -1):
                         if group.loc[j, 'start'] > current_start:
                             rows_to_drop.append(j)
@@ -1948,6 +1952,36 @@ def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
                         else:
                             group.loc[j, 'end'] = group.loc[i, 'start'] - 1
                             break
+                    ## Keep a normal diploid chromosome after the driver event if there are many events in the chrom or the same event if there was only one event before adding the driver event
+                    if current_end < chrom_end and len(group) > 2:
+                        rows_to_append = pd.DataFrame({'len': [0], 'major_cn': [1], 'minor_cn': [1], 'study': [group.loc[i, 'study']], 'end': [chrom_end], 'chrom': [chrom], 'start': [group.loc[i, 'end'] + 1], 'id': [group.loc[i, 'id']]})
+                    elif current_end < chrom_end and len(group) == 2:
+                        rows_to_append = pd.DataFrame({'len': [0], 'major_cn': [group.loc[i - 1, 'major_cn']], 'minor_cn': [group.loc[i - 1, 'minor_cn']], 'study': [group.loc[i-1, 'study']], 'end': [chrom_end], 'chrom': [chrom], 'start': [group.loc[i, 'end'] + 1], 'id': [group.loc[i, 'id']]})
+                    
+                # If the driver event happens completely within the previous segment
+                elif group.loc[i, 'end'] < group.loc[i - 1, 'end']:
+                    ## Update previous end
+                    prev_end:int = group.loc[i - 1, 'end']
+                    current_start:int = group.loc[i, 'start']
+                    group.loc[i - 1, 'end'] = current_start - 1
+
+                    ## Update current end
+                    group.loc[i, 'end'] = prev_end
+                # If the driver is between two segments overwrite the segment with which it overlaps the most
+                elif group.loc[i, 'end'] < group.loc[i + 1, 'end']:
+                    ## Check segment overlap
+                    prev_diff:int = abs(group.loc[i - 1, 'end'] - group.loc[i, 'start'])
+                    next_diff:int = abs(group.loc[i, 'end'] - group.loc[i + 1, 'start'])
+
+                    if prev_diff >= next_diff:
+                        group.loc[i, 'start'] = group.loc[i - 1, 'start']
+                        group.loc[i + 1, 'start'] = group.loc[i, 'end'] + 1
+                        rows_to_drop.append(i - 1)
+                    else:
+                        group.loc[i - 1, 'end'] = group.loc[i, 'start'] - 1
+                        group.loc[i, 'end'] = group.loc[i + 1, 'end']
+                        rows_to_drop.append(i + 1)
+                # If the driver contains many downstream segments
                 else:
                     ## Update the start
                     prev_end:int = group.loc[i - 1, 'end']
@@ -1968,14 +2002,14 @@ def add_driver_cnas(case_cnas, tumor) -> pd.DataFrame:
             else:
                 i += 1
         group = group.drop(rows_to_drop).reset_index(drop=True)
-        cna_full_updated = pd.concat([cna_full_updated, group]).reset_index(drop=True)
+        cna_full_updated = pd.concat([cna_full_updated, group, rows_to_append]).reset_index(drop=True)
 
     # Fix the start of driver CNAs if they are the first event of the chromosome
     cna_full_updated.loc[cna_full_updated['start'] == 0, 'start'] = 1
 
     return(cna_full_updated)
 
-def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) -> pd.DataFrame:
+def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, refGenome, idx=0, prefix=None) -> pd.DataFrame:
     
     """
     Generate CNAs
@@ -2015,7 +2049,7 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, idx=0, prefix=None) ->
     case_cnas = case_cnas.sort_values(by=['chrom', 'start'], key=lambda col: col.map(sort_by_int_chrom)).reset_index(drop=True)
 
     # Add driver events
-    case_cnas = add_driver_cnas(case_cnas, tumor)
+    case_cnas = add_driver_cnas(case_cnas, tumor, refGenome)
 
     # Add donor id
     if prefix == None:
@@ -2784,20 +2818,26 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
     sv_range:pr.PyRanges = pr.PyRanges(sv_range.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
     snv_range:pr.PyRanges = pr.PyRanges(vcf_range.rename(columns={'#CHROM': 'Chromosome', 'POS': 'Start', 'POS2': 'End'}))
 
-    ## Perform overlap
-    overlapping_snvs:pr.PyRanges = snv_range.join(sv_range)
-    overlapping_snvs:pd.DataFrame = overlapping_snvs.df.copy().drop(columns=['Start_b', 'End_b'])
-    overlapping_snvs = overlapping_snvs.rename(columns={'Chromosome': 'chrom', 'Start': 'start', 'ID': 'donor'})
-    overlapping_snvs = overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
+    if not sv_range.empty:
+        ## Perform overlap
+        overlapping_snvs:pr.PyRanges = snv_range.join(sv_range)
+        overlapping_snvs:pd.DataFrame = overlapping_snvs.df.copy().drop(columns=['Start_b', 'End_b'])
+        overlapping_snvs = overlapping_snvs.rename(columns={'Chromosome': 'chrom', 'Start': 'start', 'ID': 'donor'})
+        overlapping_snvs = overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
 
-    ## Get nonverlapping SNVs
-    non_overlapping_snvs:pd.DataFrame = vcf[~vcf['snv_id'].isin(overlapping_snvs['snv_id'])].copy()
-    non_overlapping_snvs['cna_id'] = "no_cna"
-    non_overlapping_snvs = non_overlapping_snvs.rename(columns={'#CHROM': 'chrom', 'POS': 'start', 'ID': 'donor'})
-    non_overlapping_snvs = non_overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
+        ## Get nonverlapping SNVs
+        non_overlapping_snvs:pd.DataFrame = vcf[~vcf['snv_id'].isin(overlapping_snvs['snv_id'])].copy()
+        non_overlapping_snvs['cna_id'] = "no_cna"
+        non_overlapping_snvs = non_overlapping_snvs.rename(columns={'#CHROM': 'chrom', 'POS': 'start', 'ID': 'donor'})
+        non_overlapping_snvs = non_overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
 
-    ## Combine
-    snv_ann:pd.DataFrame = pd.concat([overlapping_snvs, non_overlapping_snvs], ignore_index=True)
+        ## Combine
+        snv_ann:pd.DataFrame = pd.concat([overlapping_snvs, non_overlapping_snvs], ignore_index=True)
+    else:
+        snv_ann:pd.DataFrame = vcf.copy()
+        snv_ann['cna_id'] = "no_cna"
+        snv_ann = snv_ann.rename(columns={'#CHROM': 'chrom', 'POS': 'start', 'ID': 'donor'})
+        snv_ann = snv_ann[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
 
     # Compute VAFs
     ## Set the order of the events
@@ -3116,7 +3156,7 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
 
         if simulateCNA_SV:
             # Simulate CNAs
-            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, idx=idx+1)
+            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], tumor, cnaModel, gender, refGenome, idx=idx+1)
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], tumor, svModel, gender, idx=idx+1)
@@ -3334,7 +3374,7 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simula
             case_cna_sv:pd.Series = cna_sv_counts.iloc[0]
             
             # Simulate CNAs
-            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], cna_sv_tumor, cnaModel, gender, prefix=prefix)
+            case_cna:pd.DataFrame = simulate_cnas(case_cna_sv['cna'], case_cna_sv['len'], cna_sv_tumor, cnaModel, gender, refGenome, prefix=prefix)
 
             # Simulate SVs
             case_sv:pd.DataFrame = simulate_sv(case_cna, case_cna_sv.loc['DEL':'t2tINV'], cna_sv_tumor, svModel, gender, prefix=prefix)
