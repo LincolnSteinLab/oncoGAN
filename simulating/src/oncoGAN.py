@@ -2818,9 +2818,9 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
     sv_range:pr.PyRanges = pr.PyRanges(sv_range.rename(columns={'chrom': 'Chromosome', 'start': 'Start', 'end': 'End'}))
     snv_range:pr.PyRanges = pr.PyRanges(vcf_range.rename(columns={'#CHROM': 'Chromosome', 'POS': 'Start', 'POS2': 'End'}))
 
-    if not sv_range.empty:
-        ## Perform overlap
-        overlapping_snvs:pr.PyRanges = snv_range.join(sv_range)
+    ## Perform overlap
+    overlapping_snvs:pr.PyRanges = snv_range.join(sv_range)
+    if not overlapping_snvs.empty:
         overlapping_snvs:pd.DataFrame = overlapping_snvs.df.copy().drop(columns=['Start_b', 'End_b'])
         overlapping_snvs = overlapping_snvs.rename(columns={'Chromosome': 'chrom', 'Start': 'start', 'ID': 'donor'})
         overlapping_snvs = overlapping_snvs[['chrom', 'start', 'donor', 'snv_id', 'cna_id']]
