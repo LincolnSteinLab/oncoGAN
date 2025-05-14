@@ -3221,12 +3221,6 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
               is_flag=True,
               required=False,
               help="Transform the mutations to hg38")
-@click.option("--mut/--no-mut", "simulateMuts",
-              is_flag=True,
-              required=False,
-              default=True,
-              show_default=True,
-              help="Simulate mutations")
 @click.option("--CNA-SV/--no-CNA-SV", "simulateCNA_SV",
               is_flag=True,
               required=False,
@@ -3242,7 +3236,7 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
 @click.version_option(version=VERSION,
                       package_name="OncoGAN",
                       prog_name="OncoGAN")
-def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateMuts, simulateCNA_SV, savePlots):
+def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateCNA_SV, savePlots):
 
     """
     Command to simulate mutations (VCF), CNAs and SVs for personalized tumors using a GAN model
