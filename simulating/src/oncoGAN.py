@@ -2745,8 +2745,13 @@ def simulate_sv(case_cna, nSV, tumor, svModel, gender, idx=0, prefix=None) -> pd
         case_sv["donor_id"] = f"sim{idx}"
     else:
         case_sv["donor_id"] = prefix
-    case_sv["tumor"] = tumor
+    try:
+        case_sv = case_sv.drop(columns=['study'])
+    except KeyError:
+        pass
+    case_sv["study"] = tumor
     case_sv['sv_id'] = ['sv{}'.format(i) for i in range(len(case_sv))]
+    case_sv = case_sv[['chrom1', 'start1', 'end1', 'chrom2', 'start2', 'end2', 'strand1', 'strand2', 'svclass', 'cna_id', 'sv_id', 'allele', 'donor_id', 'study']]
 
     return(case_sv)
 
@@ -2768,7 +2773,7 @@ def fix_sexual_chrom_cna_sv(case_cna, case_sv) -> tuple:
 
     # Remove alleles in the SV dataset
     case_sv = case_sv.merge(case_cna[['donor_id', 'study', 'cna_id', 'fix_male_cna']],
-                            left_on=['donor_id', 'tumor', 'cna_id'],
+                            left_on=['donor_id', 'study', 'cna_id'],
                             right_on=['donor_id', 'study', 'cna_id'],
                             how='left')
     case_sv = case_sv[case_sv['allele'] != case_sv['fix_male_cna']]
@@ -3196,7 +3201,7 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
 
             # Save simulations
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
-            case_sv.rename(columns={'tumor':'study'}).to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
+            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
 @click.command(name="vcfGANerator-custom")
 @click.option("-@", "--cpus",
@@ -3407,7 +3412,7 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateCNA_SV, save
 
             # Save simulations
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
-            case_sv.rename(columns={'tumor':'study'}).to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
+            case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
 cli.add_command(availTumors)
 cli.add_command(oncoGAN)
