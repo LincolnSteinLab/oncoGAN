@@ -2474,14 +2474,16 @@ def sort_sv(sv) -> pd.DataFrame:
     Sort SV dataframe
     """
 
-    sv[["start1", "end1", "start2", "end2"]] = sv[["start1", "end1", "start2", "end2"]].astype(int)
-    sv['chrom1'] = sv['chrom1'].apply(chrom2int)
-    sv['chrom2'] = sv['chrom2'].apply(chrom2int)
-    sv = sv.sort_values(by=['chrom1', 'start1', 'chrom2', 'start2'], ignore_index=True)
-    sv['chrom1'] = sv['chrom1'].apply(chrom2str)
-    sv['chrom2'] = sv['chrom2'].apply(chrom2str)
-    
-    return(sv)
+    if sv.empty:
+        return(sv)
+    else:
+        sv[["start1", "end1", "start2", "end2"]] = sv[["start1", "end1", "start2", "end2"]].astype(int)
+        sv['chrom1'] = sv['chrom1'].apply(chrom2int)
+        sv['chrom2'] = sv['chrom2'].apply(chrom2int)
+        sv = sv.sort_values(by=['chrom1', 'start1', 'chrom2', 'start2'], ignore_index=True)
+        sv['chrom1'] = sv['chrom1'].apply(chrom2str)
+        sv['chrom2'] = sv['chrom2'].apply(chrom2str)    
+        return(sv)
 
 def cna2sv_dupdel(cna) -> pd.DataFrame:
 
