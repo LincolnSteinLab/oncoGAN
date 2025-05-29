@@ -2017,6 +2017,7 @@ def simulate_cnas(nCNAs, lenCNA, tumor, cnaModel, gender, refGenome, idx=0, pref
 
     max_length:int = 3036303846 if gender == "F" else 3095677412 if gender == "M" else None
     case_cnas:pd.DataFrame = cnaModel.generate_samples(nCNAs*100, var_column='study', var_class=tumor)
+    case_cnas = case_cnas[case_cnas['major_cn'] >= case_cnas['minor_cn']].reset_index(drop=True)
 
     # Update CNAs length
     lenCNA = round(np.exp(lenCNA))
@@ -2085,10 +2086,13 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> Non
     Plot CNA segments
     """
 
+    cna_profile_copy:pd.DataFrame = cna_profile.copy()
+    sv_profile_copy:pd.DataFrame = sv_profile.copy()
+
     # Change chrom format to str
-    cna_profile['chrom'] = cna_profile['chrom'].astype(str)
-    sv_profile['chrom1'] = sv_profile['chrom1'].astype(str)
-    sv_profile['chrom2'] = sv_profile['chrom2'].astype(str)
+    cna_profile_copy['chrom'] = cna_profile_copy['chrom'].astype(str)
+    sv_profile_copy['chrom1'] = sv_profile_copy['chrom1'].astype(str)
+    sv_profile_copy['chrom2'] = sv_profile_copy['chrom2'].astype(str)
 
     # Define chromosome lengths
     chrom_list:list = list(range(1, 23)) + ["X", "Y"]
@@ -2102,18 +2106,18 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> Non
         'chrom_size': chrom_size_list
     })
 
-    if 'Y' not in set(cna_profile['chrom']):
+    if 'Y' not in set(cna_profile_copy['chrom']):
         chrom_cumsum_length = chrom_cumsum_length.iloc[:-1]
 
     # Preprocess the data
     ## Pivot longer SVs
-    sv_profile['sv_id'] = ['sv{}'.format(i) for i in range(len(sv_profile))]
+    sv_profile_copy['sv_id'] = ['sv{}'.format(i) for i in range(len(sv_profile_copy))]
     ### Inversions
-    sv_profile_inv = sv_profile[sv_profile['svclass'].isin(['h2hINV', 't2tINV'])]
+    sv_profile_inv = sv_profile_copy[sv_profile_copy['svclass'].isin(['h2hINV', 't2tINV'])]
     sv_profile_inv = sv_profile_inv.rename(columns={'chrom1': 'chrom', 'start1': 'start', 'start2': 'end'})
     sv_profile_inv = sv_profile_inv[['chrom', 'start', 'end', 'svclass', 'sv_id']]
     ### Translocations
-    sv_profile_tra = sv_profile[sv_profile['svclass']=='TRA']
+    sv_profile_tra = sv_profile_copy[sv_profile_copy['svclass']=='TRA']
     sv_profile_long_tra = pd.concat([
         sv_profile_tra[['chrom1', 'start1', 'end1', 'svclass', 'sv_id']].rename(columns={'chrom1': 'chrom', 'start1': 'start', 'end1': 'end'}),
         sv_profile_tra[['chrom2', 'start2', 'end2', 'svclass', 'sv_id']].rename(columns={'chrom2': 'chrom', 'start2': 'start', 'end2': 'end'})])
@@ -2121,25 +2125,25 @@ def plot_cnas(cna_profile, sv_profile, tumor, output, idx=0, prefix=None) -> Non
     ### Concatenate
     sv_profile_long = pd.concat([sv_profile_inv, sv_profile_long_tra])
     ## Left join CNAs and SVs with chromosome lengths
-    cna_profile = cna_profile.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
+    cna_profile_copy = cna_profile_copy.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
     sv_profile_long = sv_profile_long.merge(chrom_cumsum_length[['chrom', 'cumlength']], on='chrom', how='left')
     ## Update segment positions
-    cna_profile['start'] = cna_profile['start'] + cna_profile['cumlength']
-    cna_profile['end'] = cna_profile['end'] + cna_profile['cumlength']
+    cna_profile_copy['start'] = cna_profile_copy['start'] + cna_profile_copy['cumlength']
+    cna_profile_copy['end'] = cna_profile_copy['end'] + cna_profile_copy['cumlength']
     sv_profile_long['start'] = sv_profile_long['start'] + sv_profile_long['cumlength']
     sv_profile_long['end'] = sv_profile_long['end'] + sv_profile_long['cumlength']
     ## Remove unnecesary columns
-    cna_profile = cna_profile.drop(columns=['cumlength'])
+    cna_profile_copy = cna_profile_copy.drop(columns=['cumlength'])
     sv_profile_long = sv_profile_long.drop(columns=['cumlength'])
     ## Add a group column, one for each segment
-    cna_profile['group'] = np.arange(1, len(cna_profile) + 1)
+    cna_profile_copy['group'] = np.arange(1, len(cna_profile_copy) + 1)
     sv_profile_long['group'] = np.arange(1, len(sv_profile_long) + 1)
     ## Calculate linewidth
-    cna_profile['linewidth'] = np.where(cna_profile['major_cn'] == cna_profile['minor_cn'], 5, 3)
+    cna_profile_copy['linewidth'] = np.where(cna_profile_copy['major_cn'] == cna_profile_copy['minor_cn'], 5, 3)
     ## Pivot longer 'major_cn' and 'minor_cn' columns for CNAs
     ### CNAs
-    id_vars:list = [col for col in cna_profile.columns if col not in ['major_cn', 'minor_cn']]
-    cna_profile_long = cna_profile.melt(
+    id_vars:list = [col for col in cna_profile_copy.columns if col not in ['major_cn', 'minor_cn']]
+    cna_profile_long = cna_profile_copy.melt(
         id_vars=id_vars,
         value_vars=['major_cn', 'minor_cn'],
         var_name='cn',
@@ -2393,6 +2397,25 @@ def check_inv_overlaps(sv_profile) -> pd.DataFrame:
 
     return(sv_profile)
 
+def sort_cna_ids(row):
+
+    """
+    Sort cna_id and allele columns for each TRA event
+    """
+
+    cna_id_list:list = row['cna_id'].split(',')
+    alleles_list:list = row['allele'].split(',')
+    
+    # Extract numeric parts
+    cna_id1:int = int(cna_id_list[0][3:])
+    cna_id2:int = int(cna_id_list[1][3:])
+    if cna_id1 > cna_id2:
+        row['cna_id'] = f'{cna_id_list[1]},{cna_id_list[0]}'
+        row['allele'] = f'{alleles_list[1]},{alleles_list[0]}'
+        return row
+    else:
+        return row
+
 def check_tra_overlaps(sv_profile) -> pd.DataFrame:
 
     """
@@ -2465,6 +2488,9 @@ def check_tra_overlaps(sv_profile) -> pd.DataFrame:
             'svclass': group.iloc[0]['svclass'],
             'cna_id': group.iloc[0]['cna_id'],
             'allele': group.iloc[0]['allele']})).reset_index()
+
+    # Restore the cna_id and allele position after sorting the TRA
+    sv_profile = sv_profile.apply(sort_cna_ids, axis=1)
 
     return(sv_profile)
 
@@ -2804,20 +2830,18 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
                             value_name='cn')
 
     # Process SV
-    case_sv = case_sv[case_sv['svclass'].isin(['DUP', 'DEL'])]
     case_sv = case_sv[['chrom1', 'start1', 'start2', 'svclass', 'cna_id', 'allele', 'sv_id']]
     case_sv = case_sv.rename(columns={'chrom1': 'chrom', 'start1': 'start', 'start2': 'end'})
 
     # Join CNA and SV
     case_sv_cna:pd.DataFrame = case_sv.merge(case_cna[['cna_id', 'allele', 'cn']], on=['cna_id', 'allele'], how='left')
-    case_sv_cna['cn_rep'] = case_sv_cna['cn'].apply(lambda x: 1 if x == 0 else x-1)
-    case_sv_cna['cna_id'] = case_sv_cna.apply(lambda row: f"x{row['chrom']}_{row['cna_id']}", axis=1)
+    case_sv_cna['cn_rep'] = case_sv_cna.apply(lambda row: 1 if row['svclass'] in ['h2hINV', 't2tINV', 'TRA'] else (1 if row['cn'] == 0 else row['cn'] - 1), axis=1)
     case_sv_cna = case_sv_cna.loc[case_sv_cna.index.repeat(case_sv_cna['cn_rep'])].copy()
     case_sv_cna = case_sv_cna.drop(columns=['cn', 'cn_rep'])
     case_sv_cna = case_sv_cna.rename(columns={'allele': 'major_minor'})
 
     # Match SV and SNV
-    sv_range:pd.DataFrame = case_sv_cna[['chrom', 'start', 'end', 'cna_id']].drop_duplicates().reset_index(drop=True)
+    sv_range:pd.DataFrame = case_sv_cna.loc[case_sv_cna['svclass'].isin(['DUP', 'DEL']), ['chrom', 'start', 'end', 'cna_id']].drop_duplicates().reset_index(drop=True)
     vcf_range:pd.DataFrame = vcf.copy()
     vcf_range['POS2'] = vcf_range['POS']
 
@@ -2871,7 +2895,9 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
         else:
             return ["allele_1_minor", "allele_2_major"]
     cna_ids:list = ["no_cna"] + case_sv_cna["cna_id"].unique().tolist()
-    allele_ploidy:dict = {cna_id: assign_alleles(cna_id) for cna_id in cna_ids}
+    cna_ids_all:list = [y for x in cna_ids for y in x.split(',')]
+    cna_ids_unique:set = set(cna_ids_all)
+    allele_ploidy:dict = {cna_id: assign_alleles(cna_id) for cna_id in cna_ids_unique}
     allele_ploidy_original:dict = copy.deepcopy(allele_ploidy)
     allele_ploidy_normal:dict = copy.deepcopy(allele_ploidy)
 
@@ -2946,6 +2972,30 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
 
             ### Remove the mutations in that allele
             mut_dict[f_cna_id].pop(allele, None)
+        
+        #INV CASE
+        elif f_class in ['h2hINV', 't2tINV']:
+            ### Choose a random allele
+            major_minor_alleles:list = [a for a in allele_ploidy[f_cna_id] if re.search(f_major_minor, a)]
+            if not major_minor_alleles:
+                random_order_event.loc[i, "allele"] = 'remove'
+                continue
+            allele:str = random.choice(major_minor_alleles)
+            random_order_event.loc[i, "allele"] = allele
+
+        #TRA CASE
+        elif f_class == 'TRA':
+            ### Choose a random allele for each chrom
+            alleles_list:list = []
+            for f_cna_id_chrom, f_major_minor_chrom in zip(f_cna_id.split(','), f_major_minor.split(',')):
+                major_minor_alleles:list = [a for a in allele_ploidy[f_cna_id_chrom] if re.search(f_major_minor_chrom, a)]
+                if not major_minor_alleles:
+                    alleles_list.append('remove')
+                    continue
+                allele:str = random.choice(major_minor_alleles)
+                alleles_list.append(allele)
+            random_order_event.loc[i, "allele"] = 'remove' if 'remove' in alleles_list else ','.join(alleles_list)
+    random_order_event = random_order_event.loc[random_order_event['allele'] != 'remove'].reset_index(drop=True)
 
     ## Combine event reconstruction
     mut_dict_list:list = []
@@ -2996,6 +3046,17 @@ def update_vaf(vcf, case_cna, case_sv, gender, nit) -> list:
     random_order_event = random_order_event.fillna('.').reset_index()
 
     return(updated_vcf, random_order_event)
+
+def update_sv(case_sv, event_order) -> pd.DataFrame:
+    
+    """
+    Update the SVs to remove those that were in a deleted allele
+    """
+
+    sv_id_list:list = [event for event in event_order['event_id'].to_list() if event.startswith('sv')]
+    case_sv = case_sv.loc[case_sv['sv_id'].isin(sv_id_list)]
+
+    return(case_sv)
 
 @click.group()
 def cli():
@@ -3175,6 +3236,7 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
             # Update mutation VAFs according to CNAs
             if simulateMuts:
                 vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
+                case_sv = update_sv(case_sv, events_order)
 
                 ## Convert from hg19 to hg38
                 if hg38:
@@ -3202,6 +3264,8 @@ def oncoGAN(cpus, tumor, nCases, nit, refGenome, prefix, outDir, hg38, simulateM
                 case_sv = hg19tohg38(sv=case_sv)
 
             # Save simulations
+            case_cna['major_cn'] = case_cna['major_cn'].astype('Int64')
+            case_cna['minor_cn'] = case_cna['minor_cn'].astype('Int64')
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
             case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
@@ -3386,6 +3450,7 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateCNA_SV, save
             
             # Update mutation VAFs according to CNAs
             vcf, events_order = update_vaf(vcf, case_cna, case_sv, gender, nit)
+            case_sv = update_sv(case_sv, events_order)
 
             ## Convert from hg19 to hg38
             if hg38:
@@ -3413,6 +3478,8 @@ def oncoGAN_custom(cpus, template, refGenome, outDir, hg38, simulateCNA_SV, save
                 case_sv = hg19tohg38(sv=case_sv)
 
             # Save simulations
+            case_cna['major_cn'] = case_cna['major_cn'].astype('Int64')
+            case_cna['minor_cn'] = case_cna['minor_cn'].astype('Int64')
             case_cna.to_csv(output.replace(".vcf", "_cna.tsv"), sep ='\t', index=False)
             case_sv.to_csv(output.replace(".vcf", "_sv.tsv"), sep ='\t', index=False)
 
