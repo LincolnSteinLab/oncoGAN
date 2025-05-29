@@ -1,0 +1,22 @@
+##fileformat=VCFv4.2
+##fileDate=20250422
+##source=custom
+##reference=hg19
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), DEL (deletion), INS (insertion), driver* (driver mutation sampled from real donors)">
+##INFO=<ID=TA,Number=A,Type=Integer,Description="Total number of alleles in which the mutation can appear">
+##INFO=<ID=AL,Number=A,Type=String,Description="Alleles in which the mutation appears">
+##INFO=<ID=CN,Number=A,Type=String,Description="Copy Number ID in which the mutation is located">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	6268688	snv1_sim1	G	A	.	.	AF=0.52;MS=SBS1;TA=2;AL=allele_2_major;CN=cna0
+1	8213874	snv2_sim1	G	A	.	.	AF=0.36;MS=SBS1;TA=2;AL=allele_1_minor;CN=cna0
+1	8647058	snv3_sim1	T	A	.	.	AF=0.41;MS=SBS1;TA=2;AL=allele_1_minor;CN=cna0
+1	9018212	snv4_sim1	C	T	.	.	AF=0.95;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
+1	10107351	snv5_sim1	TGG	T	.	.	AF=0.54;MS=SBS1;TA=2;AL=allele_2_major;CN=cna0
+1	10107586	snv6_sim1	C	CAG	.	.	AF=0.87;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
+1	11103191	snv7_sim1	G	A	.	.	AF=0.42;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
+1	14317887	snv8_sim1	A	G	.	.	AF=0.47;MS=SBS1;TA=2;AL=allele_3_major;CN=cna1
+1	15103192	snv9_sim1	G	GAT	.	.	AF=0.94;MS=SBS1;TA=2;AL=allele_2_major,allele_3_major;CN=cna1
+1	15642830	snv10_sim1	C	T	.	.	AF=0.37;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
+1	18022276	snv11_sim1	G	A	.	.	AF=0.49;MS=SBS1;TA=2;AL=allele_3_major;CN=cna1
+1	18139559	snv12_sim1	A	G	.	.	AF=0.21;MS=SBS1;TA=2;AL=allele_2_major;CN=cna1
