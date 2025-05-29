@@ -8,6 +8,7 @@ RUN micromamba install --yes --name base -f /tmp/requirements.yml && \
 
 # Copy the scripts
 COPY --chmod=777 src /src
+COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER bamsurgeon_bin/addsv.py /opt/conda/bin/addsv.py
 ENV PATH=$PATH:/src/
 
 # Set working directory
