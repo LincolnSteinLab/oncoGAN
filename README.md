@@ -1,11 +1,11 @@
-[![license](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/LincolnSteinLab/oncoGAN/tree/main/LICENSE) ![train_version](https://badgen.net/badge/train_version/0.2/blue) ![simulate_version](https://badgen.net/badge/simulate_version/0.2/blue)
- [![zenodo](https://img.shields.io/badge/docs-zenodo-green)](https://zenodo.org/records/14889626) [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.14889626.svg)](https://doi.org/10.5281/zenodo.14889626) [![Model on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/model-on-hf-sm-dark.svg)](https://huggingface.co/anderdnavarro/OncoGAN) [![Dataset on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-sm-dark.svg)](https://huggingface.co/collections/anderdnavarro/oncogan-67110940dcbafe5f1aa2d524)
+[![license](https://img.shields.io/badge/license-MIT-yellow.svg)](https://github.com/LincolnSteinLab/oncoGAN/tree/main/LICENSE) ![training](https://badgen.net/badge/training/v0.2/blue) ![simulating](https://badgen.net/badge/simulating/v0.2.1/blue) ![fasta2bam](https://badgen.net/badge/fasta2bam/v0.1/blue)
+ [![zenodo](https://img.shields.io/badge/docs-zenodo-green)](https://zenodo.org/records/13946726) [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.13946726.svg)](https://doi.org/10.5281/zenodo.13946726) [![Model on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/model-on-hf-sm-dark.svg)](https://huggingface.co/anderdnavarro/OncoGAN) [![Dataset on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-sm-dark.svg)](https://huggingface.co/collections/anderdnavarro/oncogan-67110940dcbafe5f1aa2d524)
 
 # OncoGAN
 
 A pipeline that accurately simulates high quality publicly cancer genomes (VCFs, CNAs and SVs) for eight different tumor types: Breast-AdenoCa, CNS-PiloAstro, Eso-AdenoCa, Kidney-RCC, Liver-HCC, Lymph-CLL, Panc-Endocrine and Prost-AdenoCa. OncoGAN offers a solution to current challenges in data accessibility and privacy while also serving as a powerful tool for enhancing algorithm development and benchmarking.
 
-In addition to this pipeline, we have released 100 simulated VCFs for each of the eight studied tumor types, and that are availbale on [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-syntheticVCFs) and [Zotero](https://zenodo.org/records/14889626).
+In addition to this pipeline, we have released 200 simulated VCFs for each of the eight studied tumor types, and that are availbale on [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-syntheticVCFs) and [Zotero](https://zenodo.org/records/13946726).
 
 ## Index
 
@@ -22,6 +22,10 @@ In addition to this pipeline, we have released 100 simulated VCFs for each of th
     - [CTAB-GAN+ models](#ctab-gan-models)
     - [CTGAN/TVAE models](#ctgantvae-models)
 4. [DeepTumour](#deeptumour)
+5. [Create tumor BAMs](#create-tumor-bams)
+    - [Preparation of a tumor FASTA genome](#preparation-of-a-tumor-fasta-genome)
+    - [InSilicoSeq](#insilicoseq)
+    - [BAMsurgeon](#bamsurgeon)
 
 ## Installation
 
@@ -30,6 +34,7 @@ We have created three docker images with all dependencies installed as there are
 - Training -> Environment and scripts used to train OncoGAN models (CUDA)
 - Simulating -> Pipeline for synthetic tumor simulation (CPU only)
 - DeepTumour -> Algorithm developed to detect the tumor type of origin based o somatic mutations ([Ref](https://www.nature.com/articles/s41467-019-13825-8))
+- fasta2bam -> Module to generate FASTQ/BAM files using OncoGAN's output
 
 However, due to the size of the models, they couldn’t be stored in the Docker images and need to be downloaded separately (*see [Download models](#Download-models) section below*).
 
@@ -42,10 +47,13 @@ If you don't have docker already installed in your system, please follow these [
 docker pull oicr/oncogan:training_v0.2
 
 # Simulating
-docker pull oicr/oncogan:simulating_v0.2
+docker pull oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
 docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+
+# fasta2bam
+docker pull oicr/oncogan:fasta2bam_v0.1
 ```
 
 ### Singularity
@@ -57,15 +65,18 @@ If you don't have singularity already installed in your system, please follow th
 singularity pull docker://oicr/oncogan:training_v0.2
 
 # Simulating
-singularity pull docker://oicr/oncogan:simulating_v0.2
+singularity pull docker://oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
 singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+
+# fasta2bam
+singularity pull docker://oicr/oncogan:fasta2bam_v0.1
 ```
 
 ### Download models
 
-OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/14889626).
+OncoGAN trained models for the eight tumor types and DeepTumour models can be found on [HuggingFace](https://huggingface.co/anderdnavarro/OncoGAN) and [Zotero](https://zenodo.org/records/13946726).
 
 ## Generate synthetic VCFs
 
@@ -84,14 +95,14 @@ docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -v /PATH_TO_HG19_DIR/:/reference \
            -v /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-           -it oicr/oncogan:simulating_v0.2 \
+           -it oicr/oncogan:simulating_v0.2.1 \
            vcfGANerator -n 1 --tumor Breast-AdenoCa -r /reference/hs37d5.fa [--hg38]
 
 # Singularity command
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_HG19_DIR/:/reference \
             -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-            /PATH_TO/oncogan_simulating_v0.2.sif launcher.py \
+            /PATH_TO/oncogan_simulating_v0.2.1.sif launcher.py \
             vcfGANerator -n 1 --tumor Breast-AdenoCa -r /reference/hs37d5.fa [--hg38]
 ```
 
@@ -108,6 +119,8 @@ vcfGANerator --help
 #                           subcommand to check the list of available tumors that
 #                           can be simulated  [required]
 #   -n, --nCases INTEGER    Number of cases to simulate  [default: 1]
+#   --NinT FLOAT            Normal in Tumor contamination to be taken into account when 
+#                           adjusting VAF for CNA-SV events (e.g. 0.20 = 20%) [default: 0.0]
 #   -r, --refGenome PATH    hg19 reference genome in fasta format  [required]
 #   --prefix TEXT           Prefix to name the output. If not, '--tumor' option is
 #                           used as prefix
@@ -131,14 +144,14 @@ docker run --rm -u $(id -u):$(id -g) \
            -v $(pwd):/home \
            -v /PATH_TO_HG19_DIR/:/reference \
            -v /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-           -it oicr/oncogan:simulating_v0.2 \
+           -it oicr/oncogan:simulating_v0.2.1 \
            vcfGANerator-custom --template /home/template_custom_simulation.csv -r /reference/hs37d5.fa [--hg38]
 
 # Singularity command
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_HG19_DIR/:/reference \
             -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-            /PATH_TO/oncogan_simulating_v0.2.sif launcher.py \
+            /PATH_TO/oncogan_simulating_v0.2.1.sif launcher.py \
             vcfGANerator-custom --template /home/template_custom_simulation.csv -r /reference/hs37d5.fa [--hg38]
 ```
 
@@ -158,7 +171,6 @@ vcfGANerator-custom --help
 #   --outDir DIRECTORY      Directory where save the simulations. Default is the
 #                           current directory
 #   --hg38                  Transform the mutations to hg38
-#   --mut / --no-mut        Simulate mutations  [default: mut]
 #   --CNA-SV / --no-CNA-SV  Simulate CNA and SV events  [default: CNA-SV]
 #   --plots / --no-plots    Save plots  [default: plots]
 #   --version               Show the version and exit
@@ -181,11 +193,11 @@ For singularity, the `-H` and `-B` options are analogous to `-v` docker option.
 List of available tumors:
 
 ```bash
-docker run --rm -it oicr/oncogan:simulating_v0.2 availTumors
+docker run --rm -it oicr/oncogan:simulating_v0.2.1 availTumors
 
 # or 
 
-singularity exec /PATH_TO/oncogan_simulating_v0.2.sif launcher.py availTumors
+singularity exec /PATH_TO/oncogan_simulating_v0.2.1.sif launcher.py availTumors
 
 # This is the list of available tumor types that can be simulated using OncoGAN:
 # Breast-AdenoCa          CNS-PiloAstro           Eso-AdenoCa             Kidney-RCC              
@@ -194,7 +206,7 @@ singularity exec /PATH_TO/oncogan_simulating_v0.2.sif launcher.py availTumors
 
 ## Train new models
 
-Files used to train OncoGAN models can be found [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-training_files) and [Zotero](https://zenodo.org/records/14889626). The directory containing these files or your custom training files need to be mounted into the docker/singularity container.
+Files used to train OncoGAN models can be found [HuggingFace](https://huggingface.co/datasets/anderdnavarro/OncoGAN-training_files) and [Zotero](https://zenodo.org/records/13946726). The directory containing these files or your custom training files need to be mounted into the docker/singularity container.
 
 We used two different training approaches: 
 
@@ -336,7 +348,7 @@ jupyter --help
 
 ## DeepTumour
 
-[DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/14889626). To use them:
+[DeepTumour](https://www.nature.com/articles/s41467-019-13825-8) is a tool that can predict the tumor type of origin based on the pattern of somatic mutations. We used a second version of this tool, that can predict 29 tumor types instead of 24, to validate that our simulations were correctly assigned to their training tumor type. We also trained a new model using a mix of real and synthetic donors, improving the overall accuracy of the model. Both the original and the new model are available on [HuggingFace](https://huggingface.co/anderdnavarro/DeepTumour) and [Zotero](https://zenodo.org/records/13946726). To use them:
 
 ```bash
 docker run --rm \
@@ -369,3 +381,115 @@ singularity exec \
 #   --stdout            Use this tag to print the results to stdout instead of saving them to a file
 #   --help              Show this message and exit.
 ```
+
+## Create tumor BAMs
+
+The `fasta2bam` module is a set of scripts used to generate FASTQ and BAM files from OncoGAN’s output. We provide two different approaches to generate the BAM files:
+
+1. [**InSilicoSeq**](https://insilicoseq.readthedocs.io/en/latest/): A tool that simulates sequencing reads (FASTQs) from a reference/custom genome. Using the [`OncoGAN-to-FASTA` function](#preparation-of-a-tumor-fasta-genome), we incorporate the mutations and CNAs from OncoGAN’s output into a reference FASTA genome to create the tumor genome that will serve as input for InSilicoSeq.
+2. [**BAMsurgeon**](https://github.com/adamewing/bamsurgeon/tree/master): A tool that modifies existing BAMs to add synthetic mutations, CNAs and SVs.
+
+Example files for testing are available in the [`bam_implementation` folder](bam_implementation/test).
+
+> **Information**: If you need assistance integrating OncoGAN’s output with other tools, feel free to open an issue.
+
+### Preparation of a tumor FASTA genome
+
+To use InSilicoSeq, we first need to create a tumor FASTA genome that incorporates the mutations and CNAs from OncoGAN’s output, preserving the simulated order of events. The output is a FASTA genome that can also be used with any other FASTA-to-FASTAQ generator tool. This is accomplished using the `OncoGAN-to-FASTA` function:
+
+```bash
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /PATH_TO_HG19_OR_HG38_DIR/:/reference \
+           -v /PATH_TO_FILES/:/files \
+           -it oicr/oncogan:fasta2bam_v0.1 \
+           OncoGAN-to-FASTA --input files/test_mutations_cna_adjusted.vcf \
+                            --reference_genome files/reference/hg19_chr1_1_20000000.fa \
+                            --events files/test_events_order.tsv \
+                            --sv files/test_sv.tsv \
+                            --dbSNP files/test_dbSNP_germline.vcf \
+                            --out_dir insilicoseq_test_cna
+
+# or
+
+singularity exec -H ${pwd}:/home \
+            -B /PATH_TO_HG19_OR_HG38_DIR/:/reference \
+            -B /PATH_TO_FILES/:/files \
+            /PATH_TO/oncogan_fasta2bam_v0.1.sif /usr/local/bin/_entrypoint.sh python3 /src/launcher.py \
+            OncoGAN-to-FASTA --input test/test_mutations_cna_adjusted.vcf \
+                             --reference_genome test/reference/hg19_chr1_1_20000000.fa \
+                             --events test/test_events_order.tsv \
+                             --sv test/test_sv.tsv \
+                             --dbSNP test/test_dbSNP_germline.vcf \
+                             --out_dir insilicoseq_test_cna
+```
+
+### InSilicoSeq
+
+Once the custom FASTA genome is created, we can use InSilicoSeq wrapper to generate the FASTQ files. Then, they can be aligned to the reference genome using any aligner (e.g. BWA, Bowtie2, etc.) to create the BAM files.
+
+```bash
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /PATH_TO_HG19_OR_HG38_DIR/:/reference \
+           -v /PATH_TO_CUSTOM_FASTA/:/fasta \
+           -it oicr/oncogan:fasta2bam_v0.1 \
+           InSilicoSeq --cpus 20 \
+                       --prefix insilicoseq_test_sim1 \
+                       --custom_genome fasta/sim1_genome.fa \
+                       --reference_genome reference/hg19_chr1_1_20000000.fa \
+                       --out_dir insilicoseq_test_cna \
+                       --coverage 30
+
+# or
+
+singularity exec -H ${pwd}:/home \
+            -B /PATH_TO_HG19_OR_HG38_DIR/:/reference \
+            -B /PATH_TO_CUSTOM_FASTA/:/fasta \
+            /PATH_TO/oncogan_fasta2bam_v0.1.sif /usr/local/bin/_entrypoint.sh python3 /src/launcher.py \
+            InSilicoSeq --cpus 20 \
+                       --prefix insilicoseq_test_sim1 \
+                       --custom_genome fasta/sim1_genome.fa \
+                       --reference_genome reference/hg19_chr1_1_20000000.fa \
+                       --out_dir insilicoseq_test_cna \
+                       --coverage 30
+```
+
+### BAMsurgeon
+
+BAMsurgeon requires a reference BAM file in which mutations will be inserted. Ideally, users should provide their own BAM file for this purpose. However, if no real BAM is available, you can generate one by first creating a custom FASTA genome containing only germline variants using the `OncoGAN-to-FASTA` function. This FASTA can then be used as input for `InSilicoSeq` to simulate a normal BAM file.
+
+```bash
+docker run --rm -u $(id -u):$(id -g) \
+           -v $(pwd):/home \
+           -v /PATH_TO_FILES/:/files \
+           -v /REFERENCE_BAMS/:/bams \
+           -it oicr/oncogan:fasta2bam_v0.1 \
+           BAMsurgeon --cpus 20 \
+                      --varfile files/test_mutations_cna_adjusted_bamsurgeon.vcf \
+                      --sv_varfile files/test_sv.tsv \
+                      --cnv_varfile files/test_cna.tsv \
+                      --bamfile bams/test_normal_bam/hg19_normal.bam \
+                      --donorbam bams/test_donorbam/hg19_donorbam.bam \
+                      --reference files/reference/hg19_chr1_1_20000000.fa \
+                      --prefix bamsurgeon_test_sim1 \
+                      --out_dir bamsurgeon_test_cna
+
+# or
+
+singularity exec -H ${pwd}:/home \
+            -B /PATH_TO_FILES/:/files \
+            -B /REFERENCE_BAMS/:/bams \
+            /PATH_TO/oncogan_fasta2bam_v0.1.sif /usr/local/bin/_entrypoint.sh python3 /src/launcher.py \
+            BAMsurgeon --cpus 20 \
+                       --varfile files/test_mutations_cna_adjusted_bamsurgeon.vcf \
+                       --sv_varfile files/test_sv.tsv \
+                       --cnv_varfile files/test_cna.tsv \
+                       --bamfile bams/test_normal_bam/hg19_normal.bam \
+                       --donorbam bams/test_donorbam/hg19_donorbam.bam \
+                       --reference files/reference/hg19_chr1_1_20000000.fa \
+                       --prefix bamsurgeon_test_sim1 \
+                       --out_dir bamsurgeon_test_cna
+```
+
+>Note: The `--donorbam` option in BAMSurgeon is used to extract additional reads for CNA duplications.
