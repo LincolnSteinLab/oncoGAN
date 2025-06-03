@@ -1,0 +1,16 @@
+name: base
+channels:
+    - conda-forge
+    - bioconda
+dependencies:
+    - python=3.11.9
+    - insilicoseq=2.0.1
+    - bamsurgeon=1.4.1
+    - bcftools==1.21
+    - pip:
+        - click==8.1.7
+        - numpy==1.24.4
+        - pandas==1.5.3
+        - pyfaidx==0.7.2.2
+        - pyranges==0.1.4
+        - tqdm==4.66.1

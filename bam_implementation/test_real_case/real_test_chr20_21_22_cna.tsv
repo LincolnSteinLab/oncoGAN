@@ -1,0 +1,14 @@
+chrom	start	end	major_cn	minor_cn	donor_id	study	cna_id
+20	1	29399999	1	1	sim3	Breast-AdenoCa	cna128
+20	29400000	63025520	2	1	sim3	Breast-AdenoCa	cna129
+21	1	17202311	1	1	sim3	Breast-AdenoCa	cna130
+21	17202312	17330356	2	2	sim3	Breast-AdenoCa	cna131
+21	17330357	34456756	2	1	sim3	Breast-AdenoCa	cna132
+21	34456757	40600442	1	1	sim3	Breast-AdenoCa	cna133
+21	40600443	42639189	5	2	sim3	Breast-AdenoCa	cna134
+21	42639190	42999932	2	1	sim3	Breast-AdenoCa	cna135
+21	42999933	43365986	2	2	sim3	Breast-AdenoCa	cna136
+21	43365987	43380114	4	0	sim3	Breast-AdenoCa	cna137
+21	43380115	48129895	1	1	sim3	Breast-AdenoCa	cna138
+22	1	14699999	1	1	sim3	Breast-AdenoCa	cna139
+22	14700000	51304566	1	0	sim3	Breast-AdenoCa	cna140
