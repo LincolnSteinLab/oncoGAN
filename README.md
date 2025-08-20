@@ -50,7 +50,7 @@ docker pull oicr/oncogan:training_v0.2
 docker pull oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
-docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0
 
 # fasta2bam
 docker pull oicr/oncogan:fasta2bam_v0.1
@@ -68,7 +68,7 @@ singularity pull docker://oicr/oncogan:training_v0.2
 singularity pull docker://oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
-singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0
 
 # fasta2bam
 singularity pull docker://oicr/oncogan:fasta2bam_v0.1
