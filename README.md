@@ -357,7 +357,7 @@ docker run --rm \
            -v /PATH_TO_DEEPTUMOUR_MODEL/:/home/deeptumour/src/trained_models \
            -v /PATH_TO_HG19_DIR/:/reference \
            -it -a stdout -a stderr \
-           ghcr.io/lincolnsteinlab/deeptumour:3.0.1 --help
+           ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
 
 # or
 
@@ -365,7 +365,7 @@ singularity exec \
             -B $(pwd):/WORKDIR \
             -B /PATH_TO_DEEPTUMOUR_MODEL//home/deeptumour/src/trained_models \
             -B /PATH_TO_HG19_DIR/:/reference \
-            /PATH_TO/deeptumour_3.0.1.sif --help
+            /PATH_TO/deeptumour_3.0.sif --help
 
 # (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
 
