@@ -50,7 +50,7 @@ docker pull oicr/oncogan:training_v0.2
 docker pull oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
-docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+docker pull ghcr.io/lincolnsteinlab/deeptumour:3.0
 
 # fasta2bam
 docker pull oicr/oncogan:fasta2bam_v0.1
@@ -68,7 +68,7 @@ singularity pull docker://oicr/oncogan:training_v0.2
 singularity pull docker://oicr/oncogan:simulating_v0.2.1
 
 # DeepTumour
-singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0.1
+singularity pull docker://ghcr.io/lincolnsteinlab/deeptumour:3.0
 
 # fasta2bam
 singularity pull docker://oicr/oncogan:fasta2bam_v0.1
@@ -357,7 +357,7 @@ docker run --rm \
            -v /PATH_TO_DEEPTUMOUR_MODEL/:/home/deeptumour/src/trained_models \
            -v /PATH_TO_HG19_DIR/:/reference \
            -it -a stdout -a stderr \
-           ghcr.io/lincolnsteinlab/deeptumour:3.0.1 --help
+           ghcr.io/lincolnsteinlab/deeptumour:3.0 --help
 
 # or
 
@@ -365,7 +365,7 @@ singularity exec \
             -B $(pwd):/WORKDIR \
             -B /PATH_TO_DEEPTUMOUR_MODEL//home/deeptumour/src/trained_models \
             -B /PATH_TO_HG19_DIR/:/reference \
-            /PATH_TO/deeptumour_3.0.1.sif --help
+            /PATH_TO/deeptumour_3.0.sif --help
 
 # (without the PATH_TO_DEEPTUMOUR_MODEL line, will run the standard DeepTumour model)
 
