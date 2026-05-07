@@ -1,6 +1,7 @@
 FROM oicr/oncogan:v1.0.0
 
 USER root
-RUN apk update && \
-    apk add --no-cache git
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/*
 USER mambauser
