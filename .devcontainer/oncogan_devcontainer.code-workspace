@@ -7,5 +7,9 @@
 			"path": "/oncoGAN"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"errorLens.excludeBySource": [
+			"Pylance(reportPossiblyUnboundVariable)"
+		]
+	}
 }
