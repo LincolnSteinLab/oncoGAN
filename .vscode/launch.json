@@ -35,6 +35,23 @@
       "python": "/opt/conda/bin/python3.10"
     },
     {
+      "name": "DevContainer - OncoGAN - CNA/SV",
+      "type": "debugpy",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "program": "/oncoGAN/launcher.py",
+      "args": [
+        "vcfGANerator",
+        "-n", "1",
+        "--tumor", "CNS-PiloAstro",
+        "-r", "/reference/hs37d5.fa",
+        "--no-mut",
+        "--outDir", "/workspace/test/results"
+      ],
+      "python": "/opt/conda/bin/python3.10"
+    },
+    {
       "name": "DevContainer - trainCaloForest",
       "type": "debugpy",
       "request": "launch",
