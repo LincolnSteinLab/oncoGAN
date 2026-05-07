@@ -50,6 +50,21 @@
       "python": "/opt/conda/bin/python3.10"
     },
     {
+      "name": "DevContainer - trainCaloForest - no Y condition",
+      "type": "debugpy",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "program": "/oncoGAN/launcher.py",
+      "args": [
+        "trainCaloForest",
+        "--csv", "/workspace/test/caloforest_training_no_y_test.csv",
+        "--config", "/workspace/test/caloforest_config_no_y_test.json",
+        "--prefix", "caloforest_test_no_y",
+      ],
+      "python": "/opt/conda/bin/python3.10"
+    },
+    {
       "name": "DevContainer - useCaloForest",
       "type": "debugpy",
       "request": "launch",
@@ -59,7 +74,23 @@
       "args": [
         "useCaloForest",
         "--input", "/workspace/test/caloforest_use_test.csv",
-        "--load-dir", "/workspace/runs/Mar23_10-09-40", // Update this accordingly
+        "--load-dir", "/workspace/runs/May07_09-39-07", // Update this accordingly
+        "--prefix", "use_test",
+        "--out-dir", "/workspace/test/results"
+      ],
+      "python": "/opt/conda/bin/python3.10"
+    },
+    {
+      "name": "DevContainer - useCaloForest - no Y condition",
+      "type": "debugpy",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "program": "/oncoGAN/launcher.py",
+      "args": [
+        "useCaloForest",
+        "-n", "10",
+        "--load-dir", "/workspace/runs/May07_09-40-45", // Update this accordingly
         "--prefix", "use_test",
         "--out-dir", "/workspace/test/results"
       ],
