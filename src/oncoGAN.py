@@ -232,11 +232,11 @@ def simulate_counts(tumor_f:str, nCases_f:int) -> pd.DataFrame:
 
         tumor:str = row['Tumor']
         for col in row.index[:-1]:
-            val:float = row[col]
+            val:float = round(row[col])
             stats:dict = tumor_stats.get(tumor, {}).get(col)
 
             if stats is None:
-                row[col] = round(val)
+                row[col] = val
             elif stats.get('All_Zero', False):
                 row[col] = 0
             elif val < stats['Min'] * 0.8:
@@ -244,7 +244,7 @@ def simulate_counts(tumor_f:str, nCases_f:int) -> pd.DataFrame:
             elif val > stats['Max'] * 1.3:
                 row[col] = np.nan
             else:
-                row[col] = round(val)
+                row[col] = val
         return row
     
     # Prepare the list of donors to simulate
