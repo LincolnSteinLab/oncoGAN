@@ -1,0 +1,12 @@
+sample 1bea3a72-3b73-4072-a6bb-96a90119d3ac has been removed due to homozygous loss of chrX, chr1, chr14
+
+TSG/OG data from https://doi.org/10.1016/j.cell.2013.10.011, Table S3A and S3B corrected to equal out
+    format: chromosome  start   end name    score   source  ensemble_id cosmic_role_in_cancer
+
+Essential data from https://doi.org/10.1126/science.aac7041, Table 3, KBM7 CS-Score corrected to 1
+    format: chromosome  start   end name    score   source  ensemble_id original_CS_score   p-value
+
+Locations for genes from:
+    GRCh37: https://grch37.rest.ensembl.org
+    GRCh38: https://rest.ensembl.org
+

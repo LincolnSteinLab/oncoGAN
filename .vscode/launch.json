@@ -13,13 +13,29 @@
         "-n", "1",
         "--tumor", "Breast-AdenoCa",
         "-r", "/reference/hs37d5.fa",
+        "--outDir", "/workspace/test/results"
+      ],
+      "python": "/opt/conda/bin/python3.10"
+    },
+    {
+      "name": "DevContainer - OncoGAN - Muts",
+      "type": "debugpy",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "program": "/oncoGAN/launcher.py",
+      "args": [
+        "vcfGANerator",
+        "-n", "1",
+        "--tumor", "Breast-AdenoCa",
+        "-r", "/reference/hs37d5.fa",
         "--no-CNA-SV",
         "--outDir", "/workspace/test/results"
       ],
       "python": "/opt/conda/bin/python3.10"
     },
     {
-      "name": "DevContainer - OncoGAN - template",
+      "name": "DevContainer - OncoGAN - Muts (template)",
       "type": "debugpy",
       "request": "launch",
       "console": "integratedTerminal",

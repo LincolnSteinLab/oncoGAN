@@ -1,0 +1,78 @@
+{
+    "SimParams": {
+        "Seed": 0,
+        "RateMean": 48.7319587628866,
+        "RateDist": "Geometric",
+        "Assembly": "hg19",
+        "AutosomesOnly": false
+    },
+    "FitParams": {
+        "Stress": 7.8894660101349885,
+        "TsgOg": 455.33576820938015,
+        "Essentiality": 2474.7072436772464,
+        "AutosomesOnly": false,
+        "GeneSet": "spice_TGCT"
+    },
+    "EvoParams": {
+        "Acceptance": 1.5192311774767573,
+        "MaxTries": 100
+    },
+    "Signatures": [
+        {
+            "Name": "CNVs",
+            "Prob": 1,
+            "Events": [
+                {
+                    "Type": "ArmDuplication",
+                    "Prob": 0.03194415062407446
+                },
+                {
+                    "Type": "ArmDeletion",
+                    "Prob": 0.046964247937381
+                },
+                {
+                    "Type": "CentromereBoundDuplication",
+                    "Prob": 0.015443198646075735,
+                    "Frac": 0.1877399732448977
+                },
+                {
+                    "Type": "CentromereBoundDeletion",
+                    "Prob": 0.008885127988153163,
+                    "Frac": 0.28121025860381893
+                },
+                {
+                    "Type": "InternalDuplication",
+                    "Prob": 0.1457584091389888,
+                    "Frac": 0.08552332367344351
+                },
+                {
+                    "Type": "InternalDeletion",
+                    "Prob": 0.09646710387137719,
+                    "Frac": 0.05172953695057661
+                },
+                {
+                    "Type": "TailDuplication",
+                    "Prob": 0.039983075946689234,
+                    "Frac": 0.30128537535362987
+                },
+                {
+                    "Type": "TailDeletion",
+                    "Prob": 0.10704463719060715,
+                    "Frac": 0.3619274734703074
+                },
+                {
+                    "Type": "ChromDuplication",
+                    "Prob": 0.04421408927438122
+                },
+                {
+                    "Type": "ChromDeletion",
+                    "Prob": 0.44362174740850435
+                },
+                {
+                    "Type": "WholeGenomeDoubling",
+                    "Prob": 0.3029040341539189
+                }
+            ]
+        }
+    ]
+}

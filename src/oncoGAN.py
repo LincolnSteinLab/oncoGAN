@@ -8,18 +8,17 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 
 import os
 import re
-import copy
+import tempfile
+from time import time
 import click
 import pickle
+import json
 import itertools
 import subprocess
 from multiprocessing import Pool, set_start_method
-import torch
 import random
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from typing import Literal, NamedTuple, Sequence
 from datetime import date
 from liftover import ChainFile
@@ -27,10 +26,42 @@ from tqdm import tqdm
 from pyfaidx import Fasta
 from Bio.Seq import Seq
 import pyranges as pr
+from cna_annotation import TumorGenome
 
 VERSION = "1.0.0"
 
 default_tumors:list[str] = ["Biliary-AdenoCA","Bladder-TCC","Bone-Leiomyo","Bone-Osteosarc","Breast-AdenoCa","Cervix-SCC","CNS-GBM","CNS-Medullo","CNS-Oligo","CNS-PiloAstro","ColoRect-AdenoCA","Eso-AdenoCa","Head-SCC","Kidney-ChRCC","Kidney-RCC","Liver-HCC","Lung-AdenoCA","Lung-SCC","Lymph-BNHL","Lymph-CLL","Myeloid-MPN","Ovary-AdenoCA","Panc-AdenoCA","Panc-Endocrine","Prost-AdenoCA","Skin-Melanoma","Stomach-AdenoCA","Thy-AdenoCA","Uterus-AdenoCA"]
+default_cna_tumors:dict[str, list[str]] = {
+    "Biliary-AdenoCA": ["main"], 
+    "Bladder-TCC": ["BLCA"],
+    "Bone-Leiomyo": ["main"],
+    "Bone-Osteosarc": ["main"],
+    "Breast-AdenoCa": ["BRCA"],
+    "Cervix-SCC": ["CESC"],
+    "CNS-GBM": ["GBM"],
+    "CNS-Medullo": ["main"],
+    "CNS-Oligo": ["LGG"],
+    "CNS-PiloAstro": ["main"],
+    "ColoRect-AdenoCA": ["COAD", "READ"],
+    "Eso-AdenoCa": ["ESCA"],
+    "Head-SCC": ["HNSC"],
+    "Kidney-ChRCC": ["main"],
+    "Kidney-RCC": ["KIRC"],
+    "Liver-HCC": ["LIHC"],
+    "Lung-AdenoCA": ["LUAD"],
+    "Lung-SCC": ["LUSC"],
+    "Lymph-BNHL": ["main"],
+    "Lymph-CLL": ["main"],
+    "Myeloid-MPN": ["main"],
+    "Ovary-AdenoCA": ["OV"],
+    "Panc-AdenoCA": ["PAAD"],
+    "Panc-Endocrine": ["main"],
+    "Prost-AdenoCA": ["PRAD"],
+    "Skin-Melanoma": ["SKCM"],
+    "Stomach-AdenoCA": ["STAD"],
+    "Thy-AdenoCA": ["main"],
+    "Uterus-AdenoCA": ["UCEC"]
+}
 
 #################
 # Miscellaneous #
@@ -69,11 +100,11 @@ def out_path(outDir:str, tumor:str, prefix:str|None, n:int=0, custom:bool=False)
     """
 
     if custom:
-        output:str = f"{outDir}/{prefix}.vcf"
+        output:str = f"{outDir}/{prefix}"
     elif prefix is not None:
-        output:str = f"{outDir}/{prefix}_sim{n}.vcf"
+        output:str = f"{outDir}/{prefix}_sim{n}"
     else:
-        output:str = f"{outDir}/{tumor}_sim{n}.vcf"
+        output:str = f"{outDir}/{tumor}_sim{n}"
     
     return(output)
 
@@ -103,59 +134,26 @@ def chrom2str(chrom:int) -> str:
     else:
         return str(chrom)
 
-def hg19tohg38(vcf:pd.DataFrame|None=None, cna:pd.DataFrame|None=None, sv:pd.DataFrame|None=None) -> pd.DataFrame:
+def hg19tohg38(vcf:pd.DataFrame) -> pd.DataFrame:
 
     """
     Convert hg19 coordinates to hg38
     """
 
-    if vcf is not None:
-        vcf_f = vcf.copy()
-        converter:ChainFile = ChainFile('/.liftover/hg19ToHg38.over.chain.gz')
-        for row in vcf_f.itertuples():
-            chrom:str = str(row[1])
-            pos:int = int(row[2])
-            try:
-                liftOver_result:tuple[str,int,str] = converter[chrom][pos][0]
-                vcf_f.at[row.Index, '#CHROM'] = liftOver_result[0]
-                vcf_f.at[row.Index, 'POS'] = liftOver_result[1]
-            except IndexError:
-                vcf_f.at[row.Index, '#CHROM'] = 'Remove'
+    vcf_f = vcf.copy()
+    converter:ChainFile = ChainFile('/.liftover/hg19ToHg38.over.chain.gz')
+    for row in vcf_f.itertuples():
+        chrom:str = str(row[1])
+        pos:int = int(row[2])
+        try:
+            liftOver_result:tuple[str,int,str] = converter[chrom][pos][0]
+            vcf_f.at[row.Index, '#CHROM'] = liftOver_result[0]
+            vcf_f.at[row.Index, 'POS'] = liftOver_result[1]
+        except IndexError:
+            vcf_f.at[row.Index, '#CHROM'] = 'Remove'
 
-        vcf_f = vcf_f[~vcf_f['#CHROM'].str.contains('Remove', na=False)]
-        return(vcf_f)
-    else:
-        raise ValueError()
-    # elif cna is not None:
-    #     hg19_end:list[int] = [249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846,3095677412]
-    #     hg38_end:list[int] = [248956422,491149951,689445510,879660065,1061198324,1232004303,1391350276,1536488912,1674883629,1808681051,1943767673,2077042982,2191407310,2298451028,2400442217,2490780562,2574038003,2654411288,2713028904,2777473071,2824183054,2875001522,3031042417,3088269832]
-    #     hg19_hg38_ends:dict = dict(zip(hg19_end, hg38_end))
-        
-    #     cna['end'] = cna['end'].apply(lambda x: hg19_hg38_ends.get(x, x))
-    #     return(cna)
-    # elif sv is not None:
-    #     chroms:list[str] = ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','X','Y']
-    #     hg19_end:list[int] = [249250621,492449994,690472424,881626700,1062541960,1233657027,1392795690,1539159712,1680373143,1815907890,1950914406,2084766301,2199936179,2307285719,2409817111,2500171864,2581367074,2659444322,2718573305,2781598825,2829728720,2881033286,3036303846,3095677412]
-    #     hg38_end:list[int] = [248956422,491149951,689445510,879660065,1061198324,1232004303,1391350276,1536488912,1674883629,1808681051,1943767673,2077042982,2191407310,2298451028,2400442217,2490780562,2574038003,2654411288,2713028904,2777473071,2824183054,2875001522,3031042417,3088269832]
-    #     hg19_dict:dict = dict(zip(chroms, hg19_end))
-    #     hg38_dict:dict = dict(zip(chroms, hg38_end))
-
-    #     for i, row in sv.iterrows():
-    #         ## Chrom1
-    #         hg19_end1:int = hg19_dict.get(row['chrom1'])
-    #         hg38_end1:int = hg38_dict.get(row['chrom1'])
-    #         if row['end1'] > hg38_end1:
-    #             sv.loc[i, 'end1'] = hg38_end1 - (hg19_end1 - row['end1'])
-    #             sv.loc[i, 'start1'] = sv.loc[i, 'end1']-1
-
-    #         ## Chrom2
-    #         hg19_end2:int = hg19_dict.get(row['chrom2'])
-    #         hg38_end2:int = hg38_dict.get(row['chrom2'])
-    #         if row['end2'] > hg38_end2:
-    #             sv.loc[i, 'end2'] = hg38_end2 - (hg19_end2 - row['end2'])
-    #             sv.loc[i, 'start2'] = sv.loc[i, 'end2']-1
-
-    #     return(sv)
+    vcf_f = vcf_f[~vcf_f['#CHROM'].str.contains('Remove', na=False)]
+    return(vcf_f)
 
 ##########
 # Models #
@@ -808,7 +806,7 @@ def simulate_vaf_rank(tumor_list_f:tuple[str, ...]) -> tuple[str, ...]:
 
     return tuple(donor_vafs)
 
-def simulate_mut_vafs(tumor_list_f:tuple[str, ...], vaf_ranks_list:tuple[str, ...], counts_total_f:pd.Series) -> dict: 
+def simulate_mut_vafs(tumor_list_f:tuple[str, ...], vaf_ranks_list:tuple[str, ...], counts_total_f:pd.Series, nit_list_f:tuple[float, ...]) -> dict: 
 
     """
     A function to simulate the VAF of each mutation
@@ -837,7 +835,8 @@ def simulate_mut_vafs(tumor_list_f:tuple[str, ...], vaf_ranks_list:tuple[str, ..
         case_prop_vaf_file:pd.DataFrame = prop_vaf_file.loc[prop_vaf_file["tumor"]==tumor, ['vaf_range', vaf_rank]]
         case_mut_vafs:list[str] = random.choices(list(case_prop_vaf_file['vaf_range']), weights=list(case_prop_vaf_file[vaf_rank]), k=int(n))
         case_mut_vafs_float:list[float] = vaf_rank2float(case_mut_vafs)
-        mut_vafs[idx] = tuple(case_mut_vafs_float)
+        case_mut_vafs_float_nit:list[float] = [vaf*(1-nit_list_f[idx]) for vaf in case_mut_vafs_float]
+        mut_vafs[idx] = case_mut_vafs_float_nit
     
     return(mut_vafs)
 
@@ -1168,7 +1167,7 @@ def assign_genomic_positions(signatures_f:pd.DataFrame, genomic_pattern_f:pd.Ser
     donor_df['pos'] = donor_df['pos'].astype(int)
     return donor_df.reset_index(drop=True)
 
-def pd2vcf(muts_f:pd.DataFrame, driver_muts_f:pd.DataFrame, vafs_f:list[float], idx:int=0, prefix:str|None=None) -> pd.DataFrame:
+def pd2vcf(muts_f:pd.DataFrame, driver_muts_f:pd.DataFrame, vafs_f:list[float], prefix:str) -> pd.DataFrame:
 
     """
     Convert the pandas DataFrames into a VCF
@@ -1223,7 +1222,7 @@ def pd2vcf(muts_f:pd.DataFrame, driver_muts_f:pd.DataFrame, vafs_f:list[float], 
     vcf:pd.DataFrame = pd.DataFrame({
         '#CHROM': muts_f['chrom'].tolist() + driver_muts_f['chrom'].tolist(),
         'POS': muts_f['pos'].tolist() + driver_muts_f['start'].tolist(),
-        'ID': [f"sim{idx+1}"] * n_muts if prefix == None else [prefix] * n_muts,
+        'ID': [prefix] * n_muts,
         'REF': muts_f['updated_ref'].tolist() + driver_muts_f['ref'].tolist(),
         'ALT': muts_f['updated_alt'].tolist() + driver_muts_f['alt'].tolist(),
         'QUAL' : '.',
@@ -1242,7 +1241,143 @@ def pd2vcf(muts_f:pd.DataFrame, driver_muts_f:pd.DataFrame, vafs_f:list[float], 
     vcf = vcf[vcf['keep'].shift(-1, fill_value=False)]
     vcf = vcf.drop(columns=['keep']).reset_index(drop=True)
 
+    # Create a unique ID for each mutation
+    vcf['INFO'] = vcf.apply(lambda row: f"MUTID={row.name};{row.INFO}", axis=1)
+
     return(vcf)
+
+######################
+# CNA-SV simulations #
+######################
+
+def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:bool, prefix_list_f:tuple[str, ...]) -> tuple[dict, dict]:
+    
+    """
+    Function to simulate the CNA and SV profiles for each donor based on SimChA tool
+    """
+
+    cna:dict = {}
+    sv:dict = {}
+    for idx, (tumor,sex) in enumerate(zip(tumor_list_f, sex_f)):
+        # Create a temp directory to save SimChA results for each donor
+        with tempfile.TemporaryDirectory(prefix=f"simcha{idx}_") as tmp_donor_results_dir:
+            # Load base CNA model configuration
+            cna_model:str = random.choice(default_cna_tumors[tumor])
+            cna_model = "main_config" if cna_model == "main" else f"spice_{cna_model}"
+            with open(f'/oncoGAN/models/simcha/configs/{cna_model}.json', 'r') as f:
+                cna_config:dict = json.load(f)
+            
+            # Update base CNA configuration
+            cna_config['SimParams']['Seed'] = round(time())
+            # cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38' #FIXME - Uncomment once hg19 files have been liftovered
+            cna_config['SimParams']['Sex'] = 'Male' if sex == 'M' else 'Female'
+            
+            # Save it in the temp directory
+            cna_donor_config_json:str = f'{tmp_donor_results_dir}/simcha{idx}_config.json'
+            with open(cna_donor_config_json, 'w') as f:
+                json.dump(cna_config, f)
+
+            # Run the CNA simulation in another environment
+            command:Sequence[str] = ['dotnet', 'run', '--project', '/oncoGAN/models/simcha/SimChA', '--',
+                                    '--root', '/oncoGAN/models/simcha/',
+                                    '--config', f'{cna_donor_config_json}',
+                                    '--output', f'{tmp_donor_results_dir}',
+                                    '-e', '-s']
+            command_logs = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+            # Load results
+            donor_cna:pd.DataFrame = pd.read_csv(f'{tmp_donor_results_dir}/copynumbers.tsv', sep='\t').drop(columns=['n_snvs'])
+            donor_cna['sample_id'] = prefix_list_f[idx]
+            donor_cna['tumor'] = tumor
+            donor_sv:pd.DataFrame = pd.read_csv(f'{tmp_donor_results_dir}/events.tsv', sep='\t')
+            donor_sv['sample_id'] = prefix_list_f[idx]
+
+            # Return CNA and SV profiles
+            cna[idx] = donor_cna
+            sv[idx] = donor_sv.rename(columns={"depth":"event_id"})
+    
+    return (cna, sv)
+
+def update_vafs_cna(refGenome:str, vcf_f:pd.DataFrame, events:pd.DataFrame, nit_f:float) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+    """
+    Function to compute VAF regarding CNA events
+    """
+
+    ref_segments = TumorGenome(f"{refGenome}.fai")
+
+    # History definition
+    history:list[tuple[str, int]] = [('cna', idx) for idx in events.index]
+    for mut in vcf_f.itertuples():
+        his_idx:int = random.randint(0, len(history))
+        history.insert(his_idx, ('mutation', mut.Index))
+    history_df:pd.DataFrame = pd.DataFrame(history, columns=['event', 'event_id']).reset_index(names="event_time")
+
+    # Process history
+    for his_type, his_id in history:
+        if his_type == 'mutation':
+            ref_segments.assign_mutation(his_id, vcf_f.loc[his_id])
+        elif his_type == 'cna':
+            ref_segments.apply_cna(events.loc[his_id])
+    
+    # Update VCF with new CNA driven VAFs #TODO - Ignore SVs that do not affect CN status
+    new_info_column:list[str] = []
+    nit_perc:float = 1.0 - nit_f
+    initial_vaf:list[float] = np.random.normal(loc=0.9, scale=0.15, size=vcf_f.shape[0]).tolist()
+    for mut in vcf_f.itertuples():
+        chrom:str = str(mut._1)
+        pos:int = int(mut.POS)
+        info_str:str = mut.INFO
+        
+        cn_mut:int = 0
+        cn_total:int = 0
+        cna_ids:list[int] = []
+        alleles:list[str] = []
+        # Calculate cn_total and cn_mut directly from the final graph state
+        for seg in ref_segments.segments_dict.values():
+            # Count segments that cover the mutation - Total Copy Number
+            if seg.contains(chrom, pos):
+                cn_total += 1
+
+                # Count segments that contain the mutation - Mutated Copy Number
+                if mut.Index in seg.mutations:
+                    cn_mut += 1
+                    actual_mut:dict = seg.mutations[mut.Index]
+                    cna_ids.append(actual_mut['cn'])
+                    alleles.append(actual_mut['allele'])
+
+        # Calculate VAF
+        m_vaf:float = 0.0
+        if cn_total > 0:
+            m_vaf = initial_vaf.pop() * (cn_mut / cn_total) * nit_perc
+
+        # VAF boundaries
+        m_vaf = m_vaf if m_vaf < 1 else 1 - np.random.normal(loc=0.1, scale=0.03)
+        m_vaf = max(0.0, m_vaf)
+
+        # Update INFO field in the VCF
+        info_dict:dict = {}
+        for item in info_str.split(';'):
+            k, v = item.split('=')
+            info_dict[k] = v
+        info_dict['AF'] = str(round(m_vaf, 2))
+        info_dict['TA'] = str(cn_total)
+        info_dict['AL'] = ",".join([str(i) for i in cna_ids]) if cna_ids else "."
+        
+        new_info = []
+        for k in ["MUTID", "AF", "TA", "AL", "MS", "SBSCTX", "IDCTX", "HPR", "MHR"]: #Info tags
+            if k in info_dict:
+                new_info.append(f"{k}={info_dict[k]}")
+        new_info_column.append(";".join(new_info))
+    
+    # Apply the newly built INFO column back to the VCF dataframe
+    vcf_f['INFO'] = new_info_column
+
+    # Remove mutations appearing in lost alleles
+    af_values:pd.Series = vcf_f["INFO"].str.extract(r'AF=([0-9]*\.?[0-9]+)')[0].astype(float)
+    vcf_f = vcf_f[af_values != 0]
+
+    return (vcf_f, history_df)
 
 @click.group()
 def cli():
@@ -1254,9 +1389,18 @@ def availTumors(default_tumors_f:list[str]=default_tumors):
     """
     List of available tumors to simulate
     """
+    
+    available_cna_tumors:list[str] = ["Bladder-TCC", "Breast-AdenoCa", "Cervix-SCC", "CNS-GBM", "CNS-Oligo", "ColoRect-AdenoCA", "Eso-AdenoCa", "Head-SCC", "Kidney-RCC", "Liver-HCC", "Lung-AdenoCA", "Lung-SCC", "Ovary-AdenoCA", "Panc-AdenoCA", "Prost-AdenoCA", "Skin-Melanoma", "Stomach-AdenoCA", "Uterus-AdenoCA"]
+    default_tumors_f_cna:list[str] = [f"{tumor}*" if tumor in available_cna_tumors else tumor for tumor in default_tumors_f]
+    
+    rows:list[str] = []
+    for i in range(0, len(default_tumors_f_cna), 6):
+        row:list[str] = default_tumors_f_cna[i:i+6]
+        formatted_row:str = "".join(f"{tumor:<{18}}" for tumor in row)
+        rows.append(formatted_row)
+    formatted_tumors:str = "\n".join(rows)
 
-    formatted_tumors = '\n'.join('\t'.join(default_tumors_f[i:i+6]) for i in range(0, len(default_tumors_f), 6))
-    click.echo(f"\nThis is the list of available tumor types that can be simulated using oncoGAN:\n\n{formatted_tumors}\n")
+    click.echo(f"\nThis is the list of available tumor types that can be simulated using oncoGAN - ('*' Available CNA model):\n\n{formatted_tumors}\n")
 
 @click.command(name="vcfGANerator")
 @click.option("-@", "--cpus",
@@ -1340,21 +1484,20 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
     # Create the output directory if it doesn't exist
     if not os.path.exists(outDir):
         os.makedirs(outDir)
-
-    # Torch options
-    device:torch.device = torch.device("cpu")
     
     # Simulate counts for each type of mutation
     if template is None:
         counts:pd.DataFrame = simulate_counts(tumor, nCases)
+        prefix_list:tuple[str, ...] = tuple(f"{(prefix or 'sim')}{idx+1}" for idx in range(nCases))
+        nit_list:tuple[float, ...] = tuple(nit for _ in range(nCases))
         counts_tumor_tag:tuple[str, ...] = tuple(counts.pop('Tumor').to_list())
-        counts_total:pd.Series = counts.sum(axis=1)
+        counts_total:pd.Series = counts.sum(axis=1).astype(int)
     else:
         counts:pd.DataFrame = validate_template(template, default_tumors)
         prefix_list:tuple[str, ...] = tuple(counts.pop('ID').to_list())
         nit_list:tuple[float, ...] = tuple(counts.pop('NinT').to_list())
         counts_tumor_tag:tuple[str, ...] = tuple(counts.pop('Tumor').to_list())
-        counts_total:pd.Series = counts.sum(axis=1)
+        counts_total:pd.Series = counts.sum(axis=1).astype(int)
 
     # Simulate sex
     sex:list[str] = simulate_sex(counts_tumor_tag)
@@ -1369,50 +1512,83 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
         # Simulate driver profiles
         driver_profiles:pd.DataFrame = simulate_driver_profile(counts_tumor_tag)
         driver_mutations:dict = select_driver_mutations(counts_tumor_tag, driver_profiles)
-        
-        # Simulate donor and mutations VAFs
-        donor_vaf_ranks:tuple[str, ...] = simulate_vaf_rank(counts_tumor_tag)
         counts_drivers_total:pd.Series = counts_total + driver_profiles.sum(axis=1)
-        mut_vafs:dict = simulate_mut_vafs(counts_tumor_tag, donor_vaf_ranks, counts_drivers_total)
-
-    # Simulate one donor at a time
-    for idx, case_tumor in tqdm(enumerate(counts_tumor_tag), desc = "Donors"):
-        if template is None:
-            output:str = out_path(outDir, tumor=case_tumor, prefix=prefix, n=idx+1)
+        
+        # Simulate VAFs or leave them empty to be simulated depending on CNA status
+        mut_vafs:dict = {}
+        if not simulateCNA_SV:
+            # Simulate donor and mutations VAFs
+            donor_vaf_ranks:tuple[str, ...] = simulate_vaf_rank(counts_tumor_tag)
+            mut_vafs = simulate_mut_vafs(counts_tumor_tag, donor_vaf_ranks, counts_drivers_total, nit_list)
         else:
-            output:str = out_path(outDir, tumor=case_tumor, prefix=prefix_list[idx], n=idx+1)
+            mut_vafs = {idx: [0.0] * counts_drivers_total[idx] for idx in range(len(counts_tumor_tag))}
+            
+    if simulateCNA_SV:
+        # Simulate CNA and SV profiles
+        cna_profile, sv_profile = simulate_cna_sv_profile(counts_tumor_tag, sex, hg19, prefix_list)
+
+    # Assemble one donor at a time
+    for idx, case_tumor in tqdm(enumerate(counts_tumor_tag), desc = "Donors"):
+        output:str = out_path(outDir, tumor=case_tumor, prefix=prefix_list[idx], n=idx+1)
         
         if simulateMuts:
             case_signatures:pd.DataFrame = signatures[idx].reset_index(drop=True)
             case_genomic_pattern:pd.Series = genomic_patterns.iloc[idx]
             case_driver_mutations:pd.Series = driver_mutations[idx].reset_index(drop=True)
-            
-            # Update VAF depending on NiT
-            if template is None:
-                case_mut_vafs:list[float] = [vaf*(1-nit) for vaf in mut_vafs[idx]]
-            else:
-                case_mut_vafs:list[float] = [vaf*(1-nit_list[idx]) for vaf in mut_vafs[idx]]
+            case_mut_vafs:list[float] = mut_vafs[idx]
 
             # Generate the chromosome and position of the mutations
             case_genomic_positions:pd.DataFrame = assign_genomic_positions(case_signatures, case_genomic_pattern, refGenome, cpus)
-
+        
             # Create the VCF output 
-            vcf:pd.DataFrame = pd2vcf(case_genomic_positions, case_driver_mutations, case_mut_vafs, idx=idx)
+            case_vcf:pd.DataFrame = pd2vcf(case_genomic_positions, case_driver_mutations, case_mut_vafs, prefix=prefix_list[idx])
+            
+            # Convert from hg19 to hg38 #FIXME - Uncomment once hg19 files have been liftovered (SimChA)
+            # if not hg19:
+            #     case_vcf = hg19tohg38(case_vcf)
 
-            # Write the VCF
-            if not simulateCNA_SV:
-                ## Convert from hg19 to hg38
-                if not hg19:
-                    vcf = hg19tohg38(vcf=vcf)
-                with open(output, "w+") as out:
-                    out.write("##fileformat=VCFv4.2\n")
-                    out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
-                    out.write(f"##source=OncoGAN-v{VERSION}\n")
-                    out.write(f"##reference={'hg19' if hg19 else 'hg38'}\n")
-                    out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
-                    out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), ID (indel signature), driver_* (driver mutation sampled from real donors), medium_ins/del (>5 indel size <=10), big_ins/del (>10 indel size <=25)">\n')
-                    out.write('##INFO=<ID=SBSCTX,Number=A,Type=String,Description="SBS96 context">\n')
-                    out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
-                    out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
-                    out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-                vcf.to_csv(output, sep="\t", index=False, mode="a")
+        if simulateCNA_SV:
+            case_cna:pd.DataFrame = cna_profile[idx]
+            case_sv:pd.DataFrame = sv_profile[idx]
+
+            if simulateMuts:
+                case_nit:float = nit_list[idx]
+                case_vcf, case_event_history = update_vafs_cna(refGenome, case_vcf, case_sv, case_nit)
+        
+        # Write the outputs
+        if simulateMuts and simulateCNA_SV:
+            with open(f"{output}.vcf", "w+") as out:
+                out.write("##fileformat=VCFv4.2\n")
+                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                out.write(f"##source=OncoGAN-v{VERSION}\n")
+                out.write(f"##reference={'hg19' if hg19 else 'hg38'}\n")
+                out.write('##INFO=<ID=MUTID,Number=A,Type=Integer,Description="Mutation ID">\n')
+                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                out.write('##INFO=<ID=TA,Number=A,Type=Integer,Description="Total number of alleles in which the mutation can appear">\n')
+                out.write('##INFO=<ID=AL,Number=A,Type=String,Description="Copy Number IDs in which the mutation is located">\n')
+                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), ID (indel signature), driver_* (driver mutation sampled from real donors), medium_ins/del (>5 indel size <=10), big_ins/del (>10 indel size <=25)">\n')
+                out.write('##INFO=<ID=SBSCTX,Number=A,Type=String,Description="SBS96 context">\n')
+                out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
+                out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
+                out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
+            case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False, mode="a")
+        elif simulateMuts and not simulateCNA_SV:
+            with open(f"{output}.vcf", "w+") as out:
+                out.write("##fileformat=VCFv4.2\n")
+                out.write(f"##fileDate={date.today().strftime('%Y%m%d')}\n")
+                out.write(f"##source=OncoGAN-v{VERSION}\n")
+                out.write(f"##reference={'hg19' if hg19 else 'hg38'}\n")
+                out.write('##INFO=<ID=MUTID,Number=A,Type=Integer,Description="Mutation ID">\n')
+                out.write('##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">\n')
+                out.write('##INFO=<ID=MS,Number=A,Type=String,Description="Mutation type or mutational signature assigned to each mutation. Available options are: SBS (single base substitution signature), DNP (dinucleotide polymorphism), TNP (trinucleotide polymorphism), ID (indel signature), driver_* (driver mutation sampled from real donors), medium_ins/del (>5 indel size <=10), big_ins/del (>10 indel size <=25)">\n')
+                out.write('##INFO=<ID=SBSCTX,Number=A,Type=String,Description="SBS96 context">\n')
+                out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
+                out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
+                out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
+        elif not simulateMuts and simulateCNA_SV:
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
