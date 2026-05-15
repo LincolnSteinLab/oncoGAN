@@ -62,12 +62,15 @@ default_cna_tumors:dict[str, list[str]] = {
     "Thy-AdenoCA": ["main"],
     "Uterus-AdenoCA": ["UCEC"]
 }
+default_subtumors:dict[str, list[str]] = {
+    "Breast-AdenoCa": ["BRCA"]
+}
 
 #################
 # Miscellaneous #
 #################
 
-def validate_template(template:str, default_tumors:list[str]) -> pd.DataFrame:
+def validate_template(template:str, default_tumors_f:list[str]=default_tumors) -> pd.DataFrame:
 
     """
     Check that the template file provided by the user is correct
@@ -76,7 +79,7 @@ def validate_template(template:str, default_tumors:list[str]) -> pd.DataFrame:
     df:pd.DataFrame = pd.read_csv(template)
 
     # Check "tumor" values exist in default_tumors
-    invalid_tumors:set = set(df["Tumor"]) - set(default_tumors)
+    invalid_tumors:set = set(df["Tumor"]) - set(default_tumors_f)
     if invalid_tumors:
         raise ValueError(f"Invalid tumor values found: {sorted(invalid_tumors)}. Run 'availTumors' subcommand to check the list of available tumors.")
     
@@ -159,32 +162,46 @@ def hg19tohg38(vcf:pd.DataFrame) -> pd.DataFrame:
 # Models #
 ##########
 
-def calo_forest_generation(load_dir:str, y_labels:list[str]|tuple[str,...]) -> pd.DataFrame:
-    
+def calo_forest_generation(load_dir:str, y_labels:list[str], subtumor_f:str|None=None) -> pd.DataFrame:
+
     """
     Generate samples using Calo-Forest models
     """
-    
+
     # Load the forest model
-    model:str = os.path.join(load_dir, 'forest_model.pkl')
+    if subtumor_f is None:
+        model_dir:str = load_dir
+        model:str = os.path.join(load_dir, 'forest_model.pkl')
+    else:
+        model_dir:str = f"{load_dir}_{subtumor_f}"
+        model:str = os.path.join(model_dir, 'forest_model.pkl')
+
     with open(model, 'rb') as file:
         model_dict:dict = pickle.load(file)
-    model_dict['model'].set_logdir(load_dir)
+    model_dict['model'].set_logdir(model_dir)
     model_dict['model'].set_solver_fn(model_dict['cfg']["solver"])
-    reverse_mapping:dict = {v: k for k, v in model_dict['mapping'].items()}
-
+    model_dict_y_label:str|None = model_dict['y_label']
+    
     # Prepare the number and type of samples to generate
-    y_labels_map:list[int] = [reverse_mapping[x] for x in y_labels]
-    n:int = len(y_labels_map)
-    y:np.ndarray = np.array(y_labels_map)
+    n:int = len(y_labels)
+    y_values:np.ndarray|None = None
+    if model_dict_y_label is not None:
+        reverse_mapping:dict = {v: k for k, v in model_dict['mapping'].items()}
+        y_labels_map:list[int] = [reverse_mapping[x] for x in y_labels]
+        y_values = np.array(y_labels_map)
 
     # Generate the samples
-    Xy_fake:np.ndarray = model_dict['model'].generate(batch_size=n, label_y=y)
+    Xy_fake:np.ndarray = model_dict['model'].generate(batch_size=n, label_y=y_values) 
 
     # Map back the labels to their original values
     Xy_fake_df:pd.DataFrame = pd.DataFrame.from_records(Xy_fake, columns=model_dict['columns'])
-    pred_col:str = Xy_fake_df.columns[-1]
-    Xy_fake_df[pred_col] = Xy_fake_df[pred_col].apply(lambda x: model_dict['mapping'][x])
+    if model_dict_y_label is not None:
+        pred_col:str = model_dict_y_label
+        Xy_fake_df[pred_col] = Xy_fake_df[pred_col].apply(lambda x: model_dict['mapping'][x])
+    
+    # Add Tumor column for subtumor models
+    if 'Tumor' not in Xy_fake_df.columns and subtumor_f is not None:
+        Xy_fake_df['Tumor'] = y_labels
 
     del model #release model memory
     return Xy_fake_df
@@ -216,7 +233,7 @@ def dae_reconstruction(z:pd.DataFrame, dae_model:Literal['genomic_profile']) -> 
 # Simulations #
 ###############
 
-def simulate_counts(tumor_f:str, nCases_f:int) -> pd.DataFrame:
+def simulate_counts(tumor_f:str, nCases_f:int, subtumor_f:str|None=None) -> pd.DataFrame:
 
     """
     Function to generate the number of each type of mutation per case
@@ -246,22 +263,30 @@ def simulate_counts(tumor_f:str, nCases_f:int) -> pd.DataFrame:
         return row
     
     # Prepare the list of donors to simulate
-    nCases_x5:int = nCases_f * 5
+    nCases_x:int = nCases_f * (20 if subtumor_f is not None else 5)
     if tumor_f == "Lymph-CLL":
-        mCases:int = round(nCases_x5*0.42)
-        uCases:int = nCases_x5 - mCases
+        mCases:int = round(nCases_x*0.42)
+        uCases:int = nCases_x - mCases
         cases_list:list[str] = ['Lymph-MCLL']*mCases + ['Lymph-UCLL']*uCases
     else:
-        cases_list:list[str] = [tumor_f]*nCases_x5
+        cases_list:list[str] = [tumor_f]*nCases_x
     
-    # Generate samples
-    counts:pd.DataFrame = calo_forest_generation('/oncoGAN/trained_models/donor_characteristics', cases_list)
+    counts:pd.DataFrame = pd.DataFrame()
+    while counts.shape[0] < nCases_f:
+        # Generate samples
+        tmp_counts:pd.DataFrame = calo_forest_generation('/oncoGAN/trained_models/donor_characteristics', cases_list, subtumor_f)
 
-    # Clean the output a bit (round, min and max boundaries)
-    tumor_stats:dict = pd.read_pickle('/oncoGAN/trained_models/donor_characteristics/donor_characteristics_stats.pkl')
-    counts = counts.apply(clean_counts_apply, axis=1).dropna().reset_index(drop=True)
+        # Clean the output a bit (round, min and max boundaries)
+        tumor_stats:dict = pd.read_pickle('/oncoGAN/trained_models/donor_characteristics/donor_characteristics_stats.pkl')
+        tmp_counts = tmp_counts.apply(clean_counts_apply, axis=1).dropna().reset_index(drop=True)
+
+        # Filter simulation by subtumor type when simulation is not guided
+        if subtumor_f is not None: #TODO - Update this section with a better approach in the future
+            sub_column:str = tmp_counts.columns[-2]
+            tmp_counts = tmp_counts[tmp_counts[sub_column] == 1].drop(columns=[sub_column])
+        counts = pd.concat([counts, tmp_counts], ignore_index=True)
+
     counts = counts.sample(n=nCases_f, replace=False).reset_index(drop=True)
-
     return counts
 
 def simulate_sex(tumor_list_f:tuple[str, ...]) -> list[str]:
@@ -1384,7 +1409,7 @@ def cli():
     pass
 
 @click.command(name="availTumors")
-def availTumors(default_tumors_f:list[str]=default_tumors):
+def availTumors(default_tumors_f:list[str]=default_tumors, default_subtumors_f: dict[str, list[str]] = default_subtumors):
 
     """
     List of available tumors to simulate
@@ -1393,14 +1418,24 @@ def availTumors(default_tumors_f:list[str]=default_tumors):
     available_cna_tumors:list[str] = ["Bladder-TCC", "Breast-AdenoCa", "Cervix-SCC", "CNS-GBM", "CNS-Oligo", "ColoRect-AdenoCA", "Eso-AdenoCa", "Head-SCC", "Kidney-RCC", "Liver-HCC", "Lung-AdenoCA", "Lung-SCC", "Ovary-AdenoCA", "Panc-AdenoCA", "Prost-AdenoCA", "Skin-Melanoma", "Stomach-AdenoCA", "Uterus-AdenoCA"]
     default_tumors_f_cna:list[str] = [f"{tumor}*" if tumor in available_cna_tumors else tumor for tumor in default_tumors_f]
     
+    # Tumors
     rows:list[str] = []
     for i in range(0, len(default_tumors_f_cna), 6):
         row:list[str] = default_tumors_f_cna[i:i+6]
         formatted_row:str = "".join(f"{tumor:<{18}}" for tumor in row)
         rows.append(formatted_row)
     formatted_tumors:str = "\n".join(rows)
-
+    
     click.echo(f"\nThis is the list of available tumor types that can be simulated using oncoGAN - ('*' Available CNA model):\n\n{formatted_tumors}\n")
+
+    # Subtumors
+    subtumor_rows: list[str] = []
+    for tumor, subtumors in default_subtumors_f.items():
+        formatted_subtumors = ", ".join(subtumors)
+        subtumor_rows.append(f"{tumor+':':<{18}} {formatted_subtumors}")
+    formatted_subtumor_text = "\n".join(subtumor_rows)
+    
+    click.echo("\nAvailable subtumor models:\n\n" f"{formatted_subtumor_text}\n")
 
 @click.command(name="vcfGANerator")
 @click.option("-@", "--cpus",
@@ -1415,6 +1450,13 @@ def availTumors(default_tumors_f:list[str]=default_tumors):
               default=None,
               show_default=False,
               help="Tumor type to be simulated. Run 'availTumors' subcommand to check the list of available tumors that can be simulated")
+@click.option("--subtumor",
+              type=click.STRING,
+              metavar="TEXT",
+              show_choices=False,
+              default=None,
+              show_default=False,
+              help="Subtumor type to be simulated. You must also select a tumor with available subtumor types. Run 'availTumors' subcommand to check the list of available tumors that can be simulated")
 @click.option("-n", "--nCases", "nCases",
               type=click.INT,
               default=1,
@@ -1467,7 +1509,7 @@ def availTumors(default_tumors_f:list[str]=default_tumors):
 @click.version_option(version=VERSION,
                       package_name="OncoGAN",
                       prog_name="OncoGAN")
-def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19, simulateMuts, simulateCNA_SV, savePlots):
+def oncoGAN(cpus, tumor, subtumor, nCases, nit, template, refGenome, prefix, outDir, hg19, simulateMuts, simulateCNA_SV, savePlots):
 
     """
     Command to simulate mutations (VCF), CNAs and SVs for different tumor types using a Flow-Matching Diffusion model
@@ -1480,6 +1522,9 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
         raise click.UsageError("You must provide either a tumor type using the '--tumor' option or a template using the '--template' option. Run 'availTumors' subcommand to check the list of available tumors that can be simulated.")
     if tumor is not None and template is not None:
         raise click.UsageError("You cannot provide both a tumor type using the '--tumor' option and a template using the '--template' option at the same time. Please choose one of the two options. Run 'availTumors' subcommand to check the list of available tumors that can be simulated.")
+    if tumor is not None and subtumor is not None:
+        if subtumor not in default_subtumors.get(tumor, []):
+            raise click.UsageError(f"You have selected the tumor type '{tumor}' and the subtumor type '{subtumor}', but this subtumor type is not available for the selected tumor. Run 'availTumors' subcommand to check the list of available tumors and subtumors that can be simulated.")
 
     # Create the output directory if it doesn't exist
     if not os.path.exists(outDir):
@@ -1487,13 +1532,13 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
     
     # Simulate counts for each type of mutation
     if template is None:
-        counts:pd.DataFrame = simulate_counts(tumor, nCases)
+        counts:pd.DataFrame = simulate_counts(tumor, nCases, subtumor_f=subtumor)
         prefix_list:tuple[str, ...] = tuple(f"{(prefix or 'sim')}{idx+1}" for idx in range(nCases))
         nit_list:tuple[float, ...] = tuple(nit for _ in range(nCases))
         counts_tumor_tag:tuple[str, ...] = tuple(counts.pop('Tumor').to_list())
         counts_total:pd.Series = counts.sum(axis=1).astype(int)
     else:
-        counts:pd.DataFrame = validate_template(template, default_tumors)
+        counts:pd.DataFrame = validate_template(template)
         prefix_list:tuple[str, ...] = tuple(counts.pop('ID').to_list())
         nit_list:tuple[float, ...] = tuple(counts.pop('NinT').to_list())
         counts_tumor_tag:tuple[str, ...] = tuple(counts.pop('Tumor').to_list())
@@ -1555,6 +1600,7 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
                 case_nit:float = nit_list[idx]
                 case_vcf, case_event_history = update_vafs_cna(refGenome, case_vcf, case_sv, case_nit)
         
+        #TODO - plot CNA when is simulated
         # Write the outputs
         if simulateMuts and simulateCNA_SV:
             with open(f"{output}.vcf", "w+") as out:

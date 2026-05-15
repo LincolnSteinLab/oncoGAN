@@ -35,6 +35,25 @@
       "python": "/opt/conda/bin/python3.10"
     },
     {
+      "name": "DevContainer - OncoGAN - Muts (subtumor)",
+      "type": "debugpy",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "program": "/oncoGAN/launcher.py",
+      "args": [
+        "vcfGANerator",
+        "-n", "10",
+        "--tumor", "Breast-AdenoCa",
+        "--subtumor", "BRCA",
+        "--prefix", "subtumor_test",
+        "-r", "/reference/hs37d5.fa",
+        "--no-CNA-SV",
+        "--outDir", "/workspace/test/results"
+      ],
+      "python": "/opt/conda/bin/python3.10"
+    },
+    {
       "name": "DevContainer - OncoGAN - Muts (template)",
       "type": "debugpy",
       "request": "launch",
@@ -123,7 +142,7 @@
       "args": [
         "useCaloForest",
         "-n", "10",
-        "--load-dir", "/workspace/runs/May07_09-40-45", // Update this accordingly
+        "--load-dir", "/workspace/trained_models_v1/donor_characteristics_BRCA", // Update this accordingly
         "--prefix", "use_test",
         "--out-dir", "/workspace/test/results"
       ],
