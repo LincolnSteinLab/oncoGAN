@@ -1567,7 +1567,7 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
                 out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
                 out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False)
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode = "a")
             case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False)
             case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False)
             case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False)
