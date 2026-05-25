@@ -1364,6 +1364,17 @@ def update_vafs_cna(refGenome:str, vcf_f:pd.DataFrame, events:pd.DataFrame, nit_
 
     return (vcf_f, history_df)
 
+def plot_cna(cna_f:str, output_f:str) -> None:
+
+    """
+    Function to plot the CNA profile of each donor
+    """
+
+    command:Sequence[str] = ['Rscript', '/oncoGAN/plot_cna.R',
+                             '--cna', cna_f,
+                             '--output', output_f]
+    plot_result = subprocess.run(command)
+
 @click.group()
 def cli():
     pass
@@ -1575,5 +1586,9 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
             case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False)
         elif not simulateMuts and simulateCNA_SV:
-            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
-            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False)
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False)
+        
+        # Plot CNA profile
+        if simulateCNA_SV and savePlots:
+            plot_cna(f"{output}_cna.tsv", f"{output}_cna_profile.png")

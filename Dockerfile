@@ -22,6 +22,16 @@ RUN apt-get update && \
     apt-get clean && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
+    
+# Install R
+COPY --chown=$MAMBA_USER:$MAMBA_USER requirements/r_packages.R /tmp/r_packages.R
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends r-base-dev && \
+    apt-get clean && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+RUN Rscript /tmp/r_packages.R && \
+    rm /tmp/r_packages.R
 USER $MAMBA_USER
 
 # Copy liftover chain file
