@@ -93,21 +93,6 @@ def validate_template(template:str, default_tumors:list[str]) -> pd.DataFrame:
 
     return df
 
-def out_path(outDir:str, tumor:str, prefix:str|None, n:int=0, custom:bool=False) -> str:
-
-    """
-    Get the absolute path and name for the outputs
-    """
-
-    if custom:
-        output:str = f"{outDir}/{prefix}"
-    elif prefix is not None:
-        output:str = f"{outDir}/{prefix}_sim{n}"
-    else:
-        output:str = f"{outDir}/{tumor}_sim{n}"
-    
-    return(output)
-
 def chrom2int(chrom:str) -> int:
 
     """
@@ -1529,7 +1514,7 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
 
     # Assemble one donor at a time
     for idx, case_tumor in tqdm(enumerate(counts_tumor_tag), desc = "Donors"):
-        output:str = out_path(outDir, tumor=case_tumor, prefix=prefix_list[idx], n=idx+1)
+        output:str = f"{outDir}/{tumor}_{prefix_list[idx]}"
         
         if simulateMuts:
             case_signatures:pd.DataFrame = signatures[idx].reset_index(drop=True)
@@ -1571,10 +1556,10 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
                 out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
                 out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
-            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
-            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
-            case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False, mode="a")
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False)
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False)
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False)
+            case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False)
         elif simulateMuts and not simulateCNA_SV:
             with open(f"{output}.vcf", "w+") as out:
                 out.write("##fileformat=VCFv4.2\n")
@@ -1588,7 +1573,7 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
                 out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
                 out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False)
         elif not simulateMuts and simulateCNA_SV:
             case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
             case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
