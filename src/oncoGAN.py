@@ -1254,7 +1254,7 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
             
             # Update base CNA configuration
             cna_config['SimParams']['Seed'] = round(time())
-            # cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38' #FIXME - Uncomment once hg19 files have been liftovered
+            cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38'
             cna_config['SimParams']['Sex'] = 'Male' if sex == 'M' else 'Female'
             
             # Save it in the temp directory
@@ -1263,11 +1263,11 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
                 json.dump(cna_config, f)
 
             # Run the CNA simulation in another environment
-            command:Sequence[str] = ['dotnet', 'run', '--project', '/oncoGAN/models/simcha/SimChA', '--',
+            command:Sequence[str] = ['dotnet', 'run', '--project', '/oncoGAN/models/simcha', '--',
                                     '--root', '/oncoGAN/models/simcha/',
                                     '--config', f'{cna_donor_config_json}',
                                     '--output', f'{tmp_donor_results_dir}',
-                                    '-e', '-s']
+                                    '-d', '-s']
             command_logs = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
             # Load results
@@ -1539,9 +1539,9 @@ def oncoGAN(cpus, tumor, nCases, nit, template, refGenome, prefix, outDir, hg19,
             # Create the VCF output 
             case_vcf:pd.DataFrame = pd2vcf(case_genomic_positions, case_driver_mutations, case_mut_vafs, prefix=prefix_list[idx])
             
-            # Convert from hg19 to hg38 #FIXME - Uncomment once hg19 files have been liftovered (SimChA)
-            # if not hg19:
-            #     case_vcf = hg19tohg38(case_vcf)
+            # Convert from hg19 to hg38
+            if not hg19:
+                case_vcf = hg19tohg38(case_vcf)
 
         if simulateCNA_SV:
             case_cna:pd.DataFrame = cna_profile[idx]
