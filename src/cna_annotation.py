@@ -17,7 +17,7 @@ class Segment:
         self.seg_id:int = seg_id
         self.name:str = name
         self.hap:str = hap
-        self.chrom:str = norm_chr(chrom)
+        self.chrom:str = chrom
         self.start:int = start
         self.end:int = end
         self.cna_id:int = cna_id
@@ -52,7 +52,7 @@ class TumorGenome:
         with open(fai_path, 'r') as fai:
             for line in fai:
                 cols:list = line.strip().split('\t')
-                chrom:str = str(cols[0])
+                chrom:str = norm_chr(cols[0])
                 length:int = int(cols[1])
                 
                 for hap in ['H1', 'H2']:

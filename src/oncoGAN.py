@@ -1072,7 +1072,7 @@ def assign_genomic_positions(signatures_f:pd.DataFrame, genomic_pattern_f:pd.Ser
     Function to assign genomic positions to each mutation based on the genomic pattern
     """
 
-    def parse_range_map(genomic_interval:str) -> pd.MultiIndex:
+    def parse_range_map(genomic_interval:str) -> tuple[int, int]:
 
         """
         Function to parse the range string
