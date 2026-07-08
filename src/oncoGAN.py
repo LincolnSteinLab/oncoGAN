@@ -1255,6 +1255,7 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
             # Update base CNA configuration
             cna_config['SimParams']['Seed'] = round(time())
             cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38'
+            cna_config['SimParams']['AutosomesOnly'] = False
             cna_config['SimParams']['Sex'] = 'Male' if sex == 'M' else 'Female'
             
             # Save it in the temp directory
