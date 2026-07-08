@@ -525,21 +525,25 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
         """
         
         # Assign F or M sex based on the simulated genomic profile
+        expected_sex:pd.DataFrame = pd.DataFrame({'Tumor':real_tumors_f, 'sex':real_sex_f})
+        target_sex_counts:pd.DataFrame = (expected_sex.value_counts(["Tumor", "sex"]).reset_index(name="n"))
         assigned_sex:pd.DataFrame = (genomic_profiles_f[Y_cols]
                                     .assign(id=lambda df: range(0, len(df)))
                                     .melt(id_vars="id", var_name="window", value_name="perc")
                                     .groupby("id", as_index=False)
-                                    .agg(perc=("perc", "mean"))
-                                    .assign(sex=lambda df: np.where(df["perc"] > 0.000509 + (0.00211 * 3), "M", "F"))[["id", "sex"]]) # 0.000509 mean expression in Females for Y chrom, 0.00211 sd in Females for Y chrom
+                                    .agg(perc=("perc", "mean")))
         assigned_sex['Tumor'] = sim_tumors_f
-        expected_sex:pd.DataFrame = pd.DataFrame({'Tumor':real_tumors_f, 'sex':real_sex_f})
-        target_sex_counts:pd.DataFrame = (expected_sex.value_counts(["Tumor", "sex"]).reset_index(name="n"))
-        sampled_sex_donors:pd.DataFrame = (assigned_sex
-                                        .merge(target_sex_counts, on=["Tumor", "sex"], how="inner")
-                                        .groupby(["Tumor", "sex"], group_keys=False)
-                                        .apply(lambda g: g.sample(n=min(len(g), g["n"].iloc[0]), random_state=42))
-                                        .drop(columns="n"))
-        sampled_sex_donors["key"] = (sampled_sex_donors["Tumor"].astype(str) + "_" + sampled_sex_donors["sex"].astype(str))
+        sampled_sex_donors:pd.DataFrame = pd.DataFrame()
+        for tumor, counts in target_sex_counts.groupby("Tumor"):
+            tumor_df:pd.DataFrame = assigned_sex.loc[assigned_sex["Tumor"] == tumor].sort_values("perc")
+            n_f:int = counts.loc[counts["sex"] == "F", "n"].item()
+            n_m:int = counts.loc[counts["sex"] == "M", "n"].item()
+            assigned_female:pd.DataFrame = tumor_df.nsmallest(n_f, "perc")
+            assigned_female['key'] = assigned_female['Tumor'] + "_F"
+            assigned_male:pd.DataFrame = tumor_df.nlargest(n_m, "perc")
+            assigned_male['key'] = assigned_male['Tumor'] + "_M"
+            sampled_sex_donors = pd.concat([sampled_sex_donors, assigned_female, assigned_male], ignore_index=True)
+
         assigned_ids:list[int] = []
         for _,row in expected_sex.iterrows():
             key:str = f"{row['Tumor']}_{row['sex']}"
@@ -622,7 +626,7 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
                 if dif_x_mut > 0:
                     dif_x_genomic_profiles:pd.Series = round_genomic_profiles_f.loc[idx, X_cols] - floor_genomic_profiles_f.loc[idx, X_cols]
                     dif_x_to_half:pd.Series = exp_genomic_profiles_f.loc[idx, X_cols] - floor_genomic_profiles_f.loc[idx, X_cols]
-                    selected_autosomal_cols:pd.Index = add_autosomal_to_half.loc[add_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index
+                    selected_autosomal_cols:pd.Index = add_autosomal_to_half.loc[add_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index #REVIEW - In some rare cases we might have less candiated than real needed sites
                     add_candidate_autosomal_cols:pd.Index = add_candidate_autosomal_cols.difference(selected_autosomal_cols)
                     x_sign:int = -1
                     autosomal_sign:int = 1
@@ -631,7 +635,7 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
                 else:
                     dif_x_genomic_profiles:pd.Series = ceil_genomic_profiles_f.loc[idx, X_cols] - round_genomic_profiles_f.loc[idx, X_cols]
                     dif_x_to_half:pd.Series = ceil_genomic_profiles_f.loc[idx, X_cols] - exp_genomic_profiles_f.loc[idx, X_cols]
-                    selected_autosomal_cols:pd.Index = rm_autosomal_to_half.loc[rm_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index
+                    selected_autosomal_cols:pd.Index = rm_autosomal_to_half.loc[rm_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index #REVIEW - In some rare cases we might have less candiated than real needed sites
                     rm_candidate_autosomal_cols:pd.Index = rm_candidate_autosomal_cols.difference(selected_autosomal_cols)
                     x_sign:int = 1
                     autosomal_sign:int = -1
@@ -644,7 +648,14 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
                 while n_selected_x_cols < abs(dif_x_mut):
                     remaining:int = abs(dif_x_mut) - n_selected_x_cols
                     exp_x_row:pd.Series = exp_genomic_profiles_f.loc[idx, X_cols]
-                    extra_x_cols:np.ndarray = np.random.choice(exp_x_row[exp_x_row >= np.median(exp_x_row)].index.difference(candidate_x_cols), size=remaining, replace=False)
+                    if remaining > len(exp_x_row):
+                        tmp_profile_row:pd.DataFrame = profiles.loc[idx, X_cols]
+                        extra_x_cols:np.ndarray = tmp_profile_row.index[tmp_profile_row >= 1]
+                    else:
+                        extra_x_cols:np.ndarray = np.random.choice(exp_x_row[exp_x_row >= np.median(exp_x_row)].index.difference(candidate_x_cols), size=remaining, replace=False)
+                        tmp_profile_row:pd.DataFrame = profiles.loc[idx, extra_x_cols]
+                        if x_sign < 0:
+                            extra_x_cols = tmp_profile_row.index[tmp_profile_row >= 1]
                     profiles.loc[idx, extra_x_cols] += x_sign
                     n_selected_x_cols += len(extra_x_cols)
                 
