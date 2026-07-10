@@ -41,6 +41,11 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER requirements/hg19ToHg38.over.chain.gz /.lif
 COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER models/ /oncoGAN/models/
 COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER src/* /oncoGAN/
 
+# Publish SimChA to avoid internet connection requirements at runtime
+RUN dotnet publish /oncoGAN/models/simcha/SimChA.csproj \
+    -c Release \
+    -o /oncoGAN/models/simcha/publish
+    
 # Update PATH
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
 ENV PATH=$PATH:/oncoGAN
