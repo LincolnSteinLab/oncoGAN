@@ -1254,8 +1254,7 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
                 json.dump(cna_config, f)
 
             # Run the CNA simulation in another environment
-            command:Sequence[str] = ['dotnet',
-                                    "/oncoGAN/models/simcha/publish/SimChA.dll",
+            command:Sequence[str] = ['/oncoGAN/models/simcha/publish/SimChA',
                                     '--root', '/oncoGAN/models/simcha/',
                                     '--config', f'{cna_donor_config_json}',
                                     '--output', f'{tmp_donor_results_dir}',
