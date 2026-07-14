@@ -1361,7 +1361,7 @@ def plot_cna(cna_f:str, output_f:str) -> None:
     Function to plot the CNA profile of each donor
     """
 
-    command:Sequence[str] = ['Rscript', '/oncoGAN/plot_cna.R',
+    command:Sequence[str] = ['Rscript', '/oncoGAN/plot_CNA.R',
                              '--cna', cna_f,
                              '--output', output_f]
     plot_result = subprocess.run(command)
