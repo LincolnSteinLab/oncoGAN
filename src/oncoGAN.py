@@ -502,7 +502,7 @@ def simulate_signatures(counts_f:pd.DataFrame) -> dict:
         
         if sbs is not None:
             signatures_donor_sbs = process_mutations(signatures_donor_sbs, mut_type='sbs')
-        if indels is not None:
+        if indels is not None and not signatures_donor_indels.empty:
             signatures_donor_indels = process_mutations(signatures_donor_indels, mut_type='id')
 
         signatures_dict[donor_id] = pd.concat([signatures_donor_sbs, signatures_donor_indels, donor_dnp, donor_tnp, donor_medium_ins, donor_big_ins, donor_medium_del, donor_big_del], ignore_index=True)
