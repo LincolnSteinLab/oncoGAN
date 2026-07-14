@@ -57,10 +57,10 @@ RUN apt-get update && \
 USER $MAMBA_USER
 
 # Copy files
+COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/conda /opt/conda
+COPY --chown=$MAMBA_USER:$MAMBA_USER requirements/hg19ToHg38.over.chain.gz /.liftover/hg19ToHg38.over.chain.gz
 COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER src/* /oncoGAN/
 COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER models/ /oncoGAN/models/
-COPY --chown=$MAMBA_USER:$MAMBA_USER requirements/hg19ToHg38.over.chain.gz /.liftover/hg19ToHg38.over.chain.gz
-COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/conda /opt/conda
 COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/simcha/* /oncoGAN/models/simcha/publish
 
 # Entrypoint
