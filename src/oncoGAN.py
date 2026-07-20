@@ -1244,6 +1244,7 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
         # Create a temp directory to save SimChA results for each donor
         with tempfile.TemporaryDirectory(prefix=f"simcha{idx}_") as tmp_donor_results_dir:
             # Load base CNA model configuration
+            tumor = "Lymph-CLL" if tumor in ["Lymph-MCLL", "Lymph-UCLL"] else tumor
             cna_model:str = random.choice(default_cna_tumors[tumor])
             cna_model = "main_config" if cna_model == "main" else f"spice_{cna_model}"
             with open(f'/oncoGAN/models/simcha/configs/{cna_model}.json', 'r') as f:
