@@ -1,1 +1,1 @@
-install.packages(c("argparse", "dplyr", "readr", "stringr", "tidyr", "ggplot2"))
+install.packages(c("argparse", "dplyr", "tidyr", "ggplot2"))

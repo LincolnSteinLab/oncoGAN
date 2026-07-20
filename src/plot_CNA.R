@@ -11,9 +11,8 @@ parser$add_argument("--output",
 args <- parser$parse_args()
 
 # Open CNA results
-tb <- readr::read_delim(args$cna,
-                        show_col_types = FALSE) %>% 
-  dplyr::mutate(chrom = stringr::str_remove(chrom, "chr"),
+tb <- read.delim(args$cna) %>% 
+  dplyr::mutate(chrom = sub("^chr", "", chrom),
                 chrom = factor(chrom,
                                levels = c(1:22, "X", "Y")))
 
@@ -23,7 +22,7 @@ pad_tb <- tb %>%
   dplyr::summarise(chr_length = max(end),
                    .groups = "drop") %>% 
   dplyr::arrange(chrom) %>% 
-  dplyr::mutate(chr_cumstart = cumsum(lag(chr_length, default = 0)),
+  dplyr::mutate(chr_cumstart = cumsum(as.numeric(lag(chr_length, default = 0))),
                 chr_cumend = lead(chr_cumstart),
                 chr_cumend = ifelse(is.na(chr_cumend),
                                     chr_cumstart+chr_length,
