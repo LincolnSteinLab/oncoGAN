@@ -536,8 +536,15 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
         sampled_sex_donors:pd.DataFrame = pd.DataFrame()
         for tumor, counts in target_sex_counts.groupby("Tumor"):
             tumor_df:pd.DataFrame = assigned_sex.loc[assigned_sex["Tumor"] == tumor].sort_values("perc")
-            n_f:int = counts.loc[counts["sex"] == "F", "n"].item()
-            n_m:int = counts.loc[counts["sex"] == "M", "n"].item()
+            try:
+                n_f:int = counts.loc[counts["sex"] == "F", "n"].item()
+            except ValueError:
+                n_f:int = 0
+            try:
+                n_m:int = counts.loc[counts["sex"] == "M", "n"].item()
+            except ValueError:
+                n_m:int = 0
+                
             assigned_female:pd.DataFrame = tumor_df.nsmallest(n_f, "perc")
             assigned_female['key'] = assigned_female['Tumor'] + "_F"
             assigned_male:pd.DataFrame = tumor_df.nlargest(n_m, "perc")
