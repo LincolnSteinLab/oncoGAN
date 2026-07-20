@@ -1,5 +1,10 @@
 **/__pycache__/
 **/.DS_Store
+.git
+.github
+.gitignore
+.vscode
+.devcontainer
 bam_implementation
 deeptumour
 test
