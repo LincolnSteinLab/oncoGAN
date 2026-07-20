@@ -70,10 +70,10 @@ USER $MAMBA_USER
 COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/conda /opt/conda
 COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/R /opt/R
 COPY --chown=$MAMBA_USER:$MAMBA_USER requirements/hg19ToHg38.over.chain.gz /.liftover/hg19ToHg38.over.chain.gz
-COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER src/* /oncoGAN/
+COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER src/ /oncoGAN/src/
 COPY --chmod=777 --chown=$MAMBA_USER:$MAMBA_USER models/ /oncoGAN/models/
 COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /opt/simcha/ /oncoGAN/models/simcha/publish/
 
 # Entrypoint
 WORKDIR /home/run
-ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "python", "/oncoGAN/launcher.py"]
+ENTRYPOINT ["/usr/local/bin/_entrypoint.sh", "python", "/oncoGAN/src/launcher.py"]

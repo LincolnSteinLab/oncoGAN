@@ -185,7 +185,7 @@ def dae_reconstruction(z:pd.DataFrame, dae_model:Literal['genomic_profile']) -> 
 
     # Run the reconstruction in another environment
     command:Sequence[str] = ['micromamba', 'run', '-n', 'dae',
-                    'python3', '/oncoGAN/dae_reconstruction.py',
+                    'python3', '/oncoGAN/src/dae_reconstruction.py',
                     '--model', f'{dae_model}']
     reconstructed_serialized = subprocess.run(command,
                                               input=z_serialized,
@@ -1361,7 +1361,7 @@ def plot_cna(cna_f:str, output_f:str) -> None:
     Function to plot the CNA profile of each donor
     """
 
-    command:Sequence[str] = ['Rscript', '/oncoGAN/plot_CNA.R',
+    command:Sequence[str] = ['Rscript', '/oncoGAN/src/plot_CNA.R',
                              '--cna', cna_f,
                              '--output', output_f]
     plot_result = subprocess.run(command)

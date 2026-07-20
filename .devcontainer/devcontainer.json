@@ -6,8 +6,8 @@
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
     "mounts": [
-        "source=${localWorkspaceFolder}/src,target=/oncoGAN,type=bind",
-        "source=${localWorkspaceFolder}/models,target=/oncoGAN/models,type=bind",
+        "source=${localWorkspaceFolder}/src,target=/oncoGAN/src,type=bind",
+        // "source=${localWorkspaceFolder}/models,target=/oncoGAN/models,type=bind",
         "source=${localWorkspaceFolder}/trained_models_v1,target=/oncoGAN/trained_models,type=bind",
         "source=${localWorkspaceFolder}/test/hg19,target=/reference,type=bind"
     ],
