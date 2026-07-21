@@ -7,7 +7,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "vcfGANerator",
         "-n", "1",
@@ -23,7 +23,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "vcfGANerator",
         "-n", "1",
@@ -59,7 +59,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "vcfGANerator",
         "--template", "/workspace/test/template_test.csv",
@@ -75,7 +75,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "vcfGANerator",
         "-n", "1",
@@ -92,7 +92,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "trainCaloForest",
         "--csv", "/workspace/test/caloforest_training_test.csv",
@@ -107,7 +107,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "trainCaloForest",
         "--csv", "/workspace/test/caloforest_training_no_y_test.csv",
@@ -122,7 +122,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "useCaloForest",
         "--input", "/workspace/test/caloforest_use_test.csv",
@@ -138,7 +138,7 @@
       "request": "launch",
       "console": "integratedTerminal",
       "justMyCode": true,
-      "program": "/oncoGAN/launcher.py",
+      "program": "/oncoGAN/src/launcher.py",
       "args": [
         "useCaloForest",
         "-n", "10",

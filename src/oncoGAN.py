@@ -96,21 +96,6 @@ def validate_template(template:str, default_tumors_f:list[str]=default_tumors) -
 
     return df
 
-def out_path(outDir:str, tumor:str, prefix:str|None, n:int=0, custom:bool=False) -> str:
-
-    """
-    Get the absolute path and name for the outputs
-    """
-
-    if custom:
-        output:str = f"{outDir}/{prefix}"
-    elif prefix is not None:
-        output:str = f"{outDir}/{prefix}_sim{n}"
-    else:
-        output:str = f"{outDir}/{tumor}_sim{n}"
-    
-    return(output)
-
 def chrom2int(chrom:str) -> int:
 
     """
@@ -217,7 +202,7 @@ def dae_reconstruction(z:pd.DataFrame, dae_model:Literal['genomic_profile']) -> 
 
     # Run the reconstruction in another environment
     command:Sequence[str] = ['micromamba', 'run', '-n', 'dae',
-                    'python3', '/oncoGAN/dae_reconstruction.py',
+                    'python3', '/oncoGAN/src/dae_reconstruction.py',
                     '--model', f'{dae_model}']
     reconstructed_serialized = subprocess.run(command,
                                               input=z_serialized,
@@ -542,7 +527,7 @@ def simulate_signatures(counts_f:pd.DataFrame) -> dict:
         
         if sbs is not None:
             signatures_donor_sbs = process_mutations(signatures_donor_sbs, mut_type='sbs')
-        if indels is not None:
+        if indels is not None and not signatures_donor_indels.empty:
             signatures_donor_indels = process_mutations(signatures_donor_indels, mut_type='id')
 
         signatures_dict[donor_id] = pd.concat([signatures_donor_sbs, signatures_donor_indels, donor_dnp, donor_tnp, donor_medium_ins, donor_big_ins, donor_medium_del, donor_big_del], ignore_index=True)
@@ -565,193 +550,190 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
         """
         
         # Assign F or M sex based on the simulated genomic profile
+        expected_sex:pd.DataFrame = pd.DataFrame({'Tumor':real_tumors_f, 'sex':real_sex_f})
+        target_sex_counts:pd.DataFrame = (expected_sex.value_counts(["Tumor", "sex"]).reset_index(name="n"))
         assigned_sex:pd.DataFrame = (genomic_profiles_f[Y_cols]
                                     .assign(id=lambda df: range(0, len(df)))
                                     .melt(id_vars="id", var_name="window", value_name="perc")
                                     .groupby("id", as_index=False)
-                                    .agg(perc=("perc", "mean"))
-                                    .assign(sex=lambda df: np.where(df["perc"] > 0.000509 + (0.00211 * 3), "M", "F"))[["id", "sex"]]) # 0.000509 mean expression in Females for Y chrom, 0.00211 sd in Females for Y chrom
+                                    .agg(perc=("perc", "mean")))
         assigned_sex['Tumor'] = sim_tumors_f
-        expected_sex:pd.DataFrame = pd.DataFrame({'Tumor':real_tumors_f, 'sex':real_sex_f})
-        target_sex_counts:pd.DataFrame = (expected_sex.value_counts(["Tumor", "sex"]).reset_index(name="n"))
-        sampled_sex_donors:pd.DataFrame = (assigned_sex
-                                        .merge(target_sex_counts, on=["Tumor", "sex"], how="inner")
-                                        .groupby(["Tumor", "sex"], group_keys=False)
-                                        .apply(lambda g: g.sample(n=min(len(g), g["n"].iloc[0]), random_state=42))
-                                        .drop(columns="n"))
-        sampled_sex_donors["key"] = (sampled_sex_donors["Tumor"].astype(str) + "_" + sampled_sex_donors["sex"].astype(str))
+        sampled_sex_donors:pd.DataFrame = pd.DataFrame()
+        for tumor, counts in target_sex_counts.groupby("Tumor"):
+            tumor_df:pd.DataFrame = assigned_sex.loc[assigned_sex["Tumor"] == tumor].sort_values("perc")
+            try:
+                n_f:int = counts.loc[counts["sex"] == "F", "n"].item()
+            except ValueError:
+                n_f:int = 0
+            try:
+                n_m:int = counts.loc[counts["sex"] == "M", "n"].item()
+            except ValueError:
+                n_m:int = 0
+                
+            assigned_female:pd.DataFrame = tumor_df.nsmallest(n_f, "perc")
+            assigned_female['key'] = assigned_female['Tumor'] + "_F"
+            assigned_male:pd.DataFrame = tumor_df.nlargest(n_m, "perc")
+            assigned_male['key'] = assigned_male['Tumor'] + "_M"
+            sampled_sex_donors = pd.concat([sampled_sex_donors, assigned_female, assigned_male], ignore_index=True)
+
         assigned_ids:list[int] = []
         for _,row in expected_sex.iterrows():
             key:str = f"{row['Tumor']}_{row['sex']}"
             matched_id:pd.Series = sampled_sex_donors.loc[sampled_sex_donors['key'] == key, 'id'].head(n=1)
             assigned_ids.append(matched_id.iloc[0])
             sampled_sex_donors = sampled_sex_donors.drop(matched_id.index)
-        
+
         return (genomic_profiles_f.iloc[assigned_ids].reset_index(drop=True), expected_sex)
     
-    def update_sexual_chrom_usage(genomic_profiles_f:pd.DataFrame, exp_genomic_profiles_f:pd.DataFrame, round_genomic_profiles_f:pd.DataFrame, floor_genomic_profiles_f:pd.DataFrame, ceil_genomic_profiles_f:pd.DataFrame, tumor_sex_label_f:pd.DataFrame, sex_ranks_f:pd.DataFrame) -> pd.DataFrame:
-    
+    def update_sexual_chrom_usage(genomic_profiles_f: pd.DataFrame, exp_genomic_profiles_f: pd.DataFrame, round_genomic_profiles_f: pd.DataFrame, floor_genomic_profiles_f: pd.DataFrame, ceil_genomic_profiles_f: pd.DataFrame, tumor_sex_label_f: pd.DataFrame, sex_ranks_f: pd.DataFrame, X_cols: list[str], Y_cols: list[str]) -> pd.DataFrame:
+        
         """
         Adjust mutation counts per donor so that X/Y usage falls within expected rank intervals.
         """
 
         def parse_ranks_apply(rank_str:str) -> list[tuple[float, float]]:
-
-            """
-            Apply function to parse the rank string
-            """
-            
             return [tuple(map(float, r.strip("[]").split(","))) for r in rank_str.split(";")]
 
         def find_or_sample_interval(value:float, intervals:list[tuple[float, float]]) -> tuple[float, float]:
-            
-            """
-            Quick function to find the donor interval regarding sex chromosomes usage
-            """
-
-            # Find the interval
             for low, high in intervals:
                 if low <= value <= high:
                     return low, high
-            
-            # If the donor is outside the interval sample one form real stats
-            low, high = random.choice(intervals)
-            return (low, high)
-        
-        autosomal_cols:list[str] = [c for c in genomic_profiles_f.columns if c not in X_cols + Y_cols]
-        sex_ranks_f["parsed_ranks"] = sex_ranks_f["ranks"].apply(parse_ranks_apply)
-        rank_dict:dict = sex_ranks_f.set_index("label")["parsed_ranks"].to_dict()
+            return random.choice(intervals)
 
-        profiles:pd.DataFrame = genomic_profiles_f.copy()
+        def shift_mutations(idx:int, cols:list[str], n_muts:int, sign:int):
+            
+            """
+            Helper to safely Add (+1) or Subtract (-1) `n_muts` from a specific set of columns.
+            Prioritizes rounding differences, then falls back to weighted probabilistic sampling.
+            """
+            
+            if n_muts <= 0: 
+                return
+                
+            current_profile = profiles.loc[idx, cols].copy()
+
+            if sign == 1:  # ADDING mutations
+                # Priority: Bins that were rounded down
+                diff = ceil_genomic_profiles_f.loc[idx, cols] - round_genomic_profiles_f.loc[idx, cols]
+                dist = ceil_genomic_profiles_f.loc[idx, cols] - exp_genomic_profiles_f.loc[idx, cols]
+                
+                # Sort candidates by closest to ceiling
+                candidates = diff[diff == 1].index.tolist()
+                candidates = sorted(candidates, key=lambda c: dist[c])
+                
+                use_cands = candidates[:n_muts]
+                for c in use_cands:
+                    current_profile[c] += 1
+                
+                # Fallback: Sample remaining with replacement, weighted by expected probabilities
+                remaining = n_muts - len(use_cands)
+                if remaining > 0:
+                    weights = exp_genomic_profiles_f.loc[idx, cols].values
+                    p = weights / weights.sum() if weights.sum() > 0 else None
+                    extra_cols = np.random.choice(cols, size=remaining, replace=True, p=p)
+                    for c in extra_cols:
+                        current_profile[c] += 1
+
+            else:  # SUBTRACTING mutations (sign == -1)
+                # Priority: Bins that were rounded up AND currently have > 0 mutations
+                diff = round_genomic_profiles_f.loc[idx, cols] - floor_genomic_profiles_f.loc[idx, cols]
+                dist = exp_genomic_profiles_f.loc[idx, cols] - floor_genomic_profiles_f.loc[idx, cols]
+                
+                valid_diff = diff[(diff == 1) & (current_profile > 0)]
+                candidates = valid_diff.index.tolist()
+                candidates = sorted(candidates, key=lambda c: dist[c])
+                
+                use_cands = candidates[:n_muts]
+                for c in use_cands:
+                    current_profile[c] -= 1
+                
+                # Fallback: MUST subtract from bins that currently have > 0 mutations
+                remaining = n_muts - len(use_cands)
+                for _ in range(remaining):
+                    valid_cols = current_profile[current_profile > 0].index
+                    if len(valid_cols) == 0:
+                        break # Failsafe: Should theoretically not happen if total > 0
+                    
+                    # Weight subtraction by current mutation counts (higher counts = more likely to lose one)
+                    weights = current_profile[valid_cols].values
+                    p = weights / weights.sum()
+                    c = np.random.choice(valid_cols, p=p)
+                    current_profile[c] -= 1
+
+            # Apply changes back to main dataframe
+            profiles.loc[idx, cols] = current_profile
+
+        def extra_adjustment_apply(row:pd.Series) -> pd.Series:
+
+            """
+            In very rare cases where only a very small amount of mutations are generated, there might be regions with -1 mutations.
+            This function is to fix those regions in a very simple way.
+            """
+
+            pos_to_rm:int = abs(row[row < 0].sum())
+            if pos_to_rm > 0:
+                cols:pd.Index = row.sample(frac=1).nlargest(pos_to_rm).index
+                row[cols] -= 1
+                row[row < 0] = 0
+                return row
+            else:
+                return row
+            
+        autosomal_cols = [c for c in genomic_profiles_f.columns if c not in X_cols + Y_cols]
+        
+        sex_ranks_f["parsed_ranks"] = sex_ranks_f["ranks"].apply(parse_ranks_apply)
+        rank_dict = sex_ranks_f.set_index("label")["parsed_ranks"].to_dict()
+
+        profiles = genomic_profiles_f.copy()
         for idx, row in profiles.iterrows():
-            ## Set label
             tumor:str = tumor_sex_label_f.loc[idx, "Tumor"]
             if tumor in ['Lymph-MCLL', 'Lymph-UCLL']:
                 tumor = 'Lymph-CLL'
             sex:str = tumor_sex_label_f.loc[idx, "sex"]
+            
             label_x:str = f"{tumor}_X{sex}"
             label_y:str = f"{tumor}_Y{sex}"
+            total:int = int(row.sum())
 
-            ## Compute total counts
-            total:int = row.sum()
+            # --- Chromosome X ---
+            obs_x_mut:int = int(row[X_cols].sum())
+            obs_x_freq:float = obs_x_mut / total * 100 if total > 0 else 0
+            low_x, high_x = find_or_sample_interval(obs_x_freq, rank_dict.get(label_x, [(0,0)]))
 
-            ## Calculate autosomal columns only once
-            ### Add to autosomal
-            add_autosomal_genomic_profiles:pd.Series = ceil_genomic_profiles_f.loc[idx, autosomal_cols] - round_genomic_profiles_f.loc[idx, autosomal_cols]
-            add_autosomal_to_half:pd.Series = ceil_genomic_profiles_f.loc[idx, autosomal_cols] - exp_genomic_profiles_f.loc[idx, autosomal_cols]
-            add_candidate_autosomal_cols:pd.Index = add_autosomal_genomic_profiles[add_autosomal_genomic_profiles == 1].index
-            ### Remove from autosomal
-            rm_autosomal_genomic_profiles:pd.Series = round_genomic_profiles_f.loc[idx, autosomal_cols] - floor_genomic_profiles_f.loc[idx, autosomal_cols]
-            rm_autosomal_to_half:pd.Series = exp_genomic_profiles_f.loc[idx, autosomal_cols] - floor_genomic_profiles_f.loc[idx, autosomal_cols]
-            rm_candidate_autosomal_cols:pd.Index = rm_autosomal_genomic_profiles[rm_autosomal_genomic_profiles == 1].index
-
-            ## Chrom X
-            ### Observed frequency and interval
-            obs_x_mut:int = row[X_cols].sum()
-            obs_x_freq:float = obs_x_mut / total * 100
-            low, high = find_or_sample_interval(obs_x_freq, rank_dict[label_x])
-
-            if not (low <= obs_x_freq <= high):
-                ### Expected frquency and total mutations
-                exp_x_freq:float = np.round(np.random.choice(np.arange(low, high, 0.001), 1)[0], 3)
+            if not (low_x <= obs_x_freq <= high_x):
+                # Safe interval float generation
+                exp_x_freq = low_x if low_x == high_x else np.random.uniform(low_x, high_x)
                 exp_x_mut:int = int(np.round(exp_x_freq * total / 100))
-
                 dif_x_mut:int = obs_x_mut - exp_x_mut
 
-                ### More mut than expected -> remove X mutations
-                if dif_x_mut > 0:
-                    dif_x_genomic_profiles:pd.Series = round_genomic_profiles_f.loc[idx, X_cols] - floor_genomic_profiles_f.loc[idx, X_cols]
-                    dif_x_to_half:pd.Series = exp_genomic_profiles_f.loc[idx, X_cols] - floor_genomic_profiles_f.loc[idx, X_cols]
-                    selected_autosomal_cols:pd.Index = add_autosomal_to_half.loc[add_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index
-                    add_candidate_autosomal_cols:pd.Index = add_candidate_autosomal_cols.difference(selected_autosomal_cols)
-                    x_sign:int = -1
-                    autosomal_sign:int = 1
+                if dif_x_mut > 0: # Too many X -> subtract from X, add to Auto
+                    shift_mutations(idx, X_cols, abs(dif_x_mut), sign=-1)
+                    shift_mutations(idx, autosomal_cols, abs(dif_x_mut), sign=1)
+                elif dif_x_mut < 0: # Too few X -> add to X, subtract from Auto
+                    shift_mutations(idx, X_cols, abs(dif_x_mut), sign=1)
+                    shift_mutations(idx, autosomal_cols, abs(dif_x_mut), sign=-1)
 
-                ### Less mut than expected -> add X mutations
-                else:
-                    dif_x_genomic_profiles:pd.Series = ceil_genomic_profiles_f.loc[idx, X_cols] - round_genomic_profiles_f.loc[idx, X_cols]
-                    dif_x_to_half:pd.Series = ceil_genomic_profiles_f.loc[idx, X_cols] - exp_genomic_profiles_f.loc[idx, X_cols]
-                    selected_autosomal_cols:pd.Index = rm_autosomal_to_half.loc[rm_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index
-                    rm_candidate_autosomal_cols:pd.Index = rm_candidate_autosomal_cols.difference(selected_autosomal_cols)
-                    x_sign:int = 1
-                    autosomal_sign:int = -1
+            # --- Chromosome Y ---
+            # Update row to reflect X changes before checking Y (optional but slightly more accurate)
+            obs_y_mut:int = int(profiles.loc[idx, Y_cols].sum())
+            obs_y_freq:float = obs_y_mut / total * 100 if total > 0 else 0
+            low_y, high_y = find_or_sample_interval(obs_y_freq, rank_dict[label_y]) if label_y in rank_dict else (0, 0)
 
-                candidate_x_cols:pd.Index = dif_x_genomic_profiles[dif_x_genomic_profiles == 1].index
-                selected_x_cols:pd.Index = dif_x_to_half.loc[candidate_x_cols].sample(frac=1).nsmallest(abs(dif_x_mut)).index
-                profiles.loc[idx, selected_x_cols] += x_sign
+            if not (low_y <= obs_y_freq <= high_y):
+                # Safe interval float generation
+                exp_y_freq = low_y if low_y == high_y else np.random.uniform(low_y, high_y)
+                exp_y_mut:int = int(np.round(exp_y_freq * total / 100))
+                dif_y_mut:int = obs_y_mut - exp_y_mut
 
-                n_selected_x_cols:int = len(selected_x_cols)
-                while n_selected_x_cols < abs(dif_x_mut):
-                    remaining:int = abs(dif_x_mut) - n_selected_x_cols
-                    exp_x_row:pd.Series = exp_genomic_profiles_f.loc[idx, X_cols]
-                    extra_x_cols:np.ndarray = np.random.choice(exp_x_row[exp_x_row >= np.median(exp_x_row)].index.difference(candidate_x_cols), size=remaining, replace=False)
-                    profiles.loc[idx, extra_x_cols] += x_sign
-                    n_selected_x_cols += len(extra_x_cols)
-                
-                profiles.loc[idx, selected_autosomal_cols] += autosomal_sign
-            
-            ## Chrom Y
-            if label_y in rank_dict.keys():
-                ### Observed frequency and interval
-                obs_y_mut:int = row[Y_cols].sum()
-                obs_y_freq:float = obs_y_mut / total * 100
-                low, high = find_or_sample_interval(obs_y_freq, rank_dict[label_y])
+                if dif_y_mut > 0: # Too many Y -> subtract from Y, add to Auto
+                    shift_mutations(idx, Y_cols, abs(dif_y_mut), sign=-1)
+                    shift_mutations(idx, autosomal_cols, abs(dif_y_mut), sign=1)
+                elif dif_y_mut < 0: # Too few Y -> add to Y, subtract from Auto
+                    shift_mutations(idx, Y_cols, abs(dif_y_mut), sign=1)
+                    shift_mutations(idx, autosomal_cols, abs(dif_y_mut), sign=-1)
 
-                if not (low <= obs_y_freq <= high):
-                    ### Expected frquency and total mutations
-                    exp_y_freq:float = np.round(np.random.choice(np.arange(low, high, 0.001), 1)[0], 3)
-                    exp_y_mut:int = int(np.round(exp_y_freq * total / 100))
-
-                    dif_y_mut:int = obs_y_mut - exp_y_mut
-
-                    ### More mut than expected -> remove Y mutations
-                    if dif_y_mut > 0:
-                        dif_y_genomic_profiles:pd.Series = round_genomic_profiles_f.loc[idx, Y_cols] - floor_genomic_profiles_f.loc[idx, Y_cols]
-                        dif_y_to_half:pd.Series = exp_genomic_profiles_f.loc[idx, Y_cols] - floor_genomic_profiles_f.loc[idx, Y_cols]
-                        selected_autosomal_cols:pd.Index = add_autosomal_to_half.loc[add_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_y_mut)).index
-                        y_sign:int = -1
-                        autosomal_sign:int = 1
-
-                    ### Less mut than expected -> add Y mutations
-                    else:
-                        dif_y_genomic_profiles:pd.Series = ceil_genomic_profiles_f.loc[idx, Y_cols] - round_genomic_profiles_f.loc[idx, Y_cols]
-                        dif_y_to_half:pd.Series = ceil_genomic_profiles_f.loc[idx, Y_cols] - exp_genomic_profiles_f.loc[idx, Y_cols]
-                        selected_autosomal_cols:pd.Index = rm_autosomal_to_half.loc[rm_candidate_autosomal_cols].sample(frac=1).nsmallest(abs(dif_y_mut)).index
-                        y_sign:int = 1
-                        autosomal_sign:int = -1
-
-                    candidate_y_cols:pd.Index = dif_y_genomic_profiles[dif_y_genomic_profiles == 1].index
-                    selected_y_cols:pd.Index = dif_y_to_half.loc[candidate_y_cols].sample(frac=1).nsmallest(abs(dif_y_mut)).index
-                    profiles.loc[idx, selected_y_cols] += y_sign
-
-                    n_selected_y_cols:int = len(selected_y_cols)
-                    while n_selected_y_cols < abs(dif_y_mut):
-                        remaining:int = abs(dif_y_mut) - n_selected_y_cols
-                        exp_y_row:pd.Series = exp_genomic_profiles_f.loc[idx, Y_cols]
-                        extra_y_cols:np.ndarray = np.random.choice(exp_y_row[exp_y_row >= np.median(exp_y_row)].index.difference(candidate_y_cols), size=remaining, replace=False)
-                        profiles.loc[idx, extra_y_cols] += y_sign
-                        n_selected_y_cols += len(extra_y_cols)
-
-                    profiles.loc[idx, selected_autosomal_cols] += autosomal_sign
-
-        profiles = profiles.apply(extra_adjustment_apply, axis=1)
+        profiles = profiles.apply(extra_adjustment_apply, axis=1)            
         return profiles
-
-    def extra_adjustment_apply(row:pd.Series) -> pd.Series:
-
-        """
-        In very rare cases where only a very small amount of mutations are generated, there might be regions with -1 mutations.
-        This function is to fix those regions in a very simple way.
-        """
-
-        pos_to_rm:int = abs(row[row < 0].sum())
-        if pos_to_rm > 0:
-            cols:pd.Index = row.sample(frac=1).nlargest(pos_to_rm).index
-            row[cols] -= 1
-            row[row < 0] = 0
-            return row
-        else:
-            return row
 
     # Generate latent profile
     latent_profiles:pd.DataFrame = calo_forest_generation('/oncoGAN/trained_models/positional_pattern', tumor_list_f*5)
@@ -794,7 +776,7 @@ def simulate_genomic_profile(tumor_list_f:tuple[str, ...], counts_total_f:pd.Ser
     # Update sexual chromosomes usage
     tumor_sex_df:pd.DataFrame = pd.read_csv('/oncoGAN/trained_models/xy_usage_ranks.txt', sep='\t')
     genomic_profiles = update_sexual_chrom_usage(genomic_profiles, exp_genomic_profiles, round_genomic_profiles, floor_genomic_profiles, ceil_genomic_profiles,
-                                                 tumor_sex_label, tumor_sex_df)
+                                                 tumor_sex_label, tumor_sex_df, X_cols, Y_cols)
     
     return genomic_profiles
 
@@ -1112,7 +1094,7 @@ def assign_genomic_positions(signatures_f:pd.DataFrame, genomic_pattern_f:pd.Ser
     Function to assign genomic positions to each mutation based on the genomic pattern
     """
 
-    def parse_range_map(genomic_interval:str) -> pd.MultiIndex:
+    def parse_range_map(genomic_interval:str) -> tuple[int, int]:
 
         """
         Function to parse the range string
@@ -1287,6 +1269,7 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
         # Create a temp directory to save SimChA results for each donor
         with tempfile.TemporaryDirectory(prefix=f"simcha{idx}_") as tmp_donor_results_dir:
             # Load base CNA model configuration
+            tumor = "Lymph-CLL" if tumor in ["Lymph-MCLL", "Lymph-UCLL"] else tumor
             cna_model:str = random.choice(default_cna_tumors[tumor])
             cna_model = "main_config" if cna_model == "main" else f"spice_{cna_model}"
             with open(f'/oncoGAN/models/simcha/configs/{cna_model}.json', 'r') as f:
@@ -1294,7 +1277,8 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
             
             # Update base CNA configuration
             cna_config['SimParams']['Seed'] = round(time())
-            # cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38' #FIXME - Uncomment once hg19 files have been liftovered
+            cna_config['SimParams']['Assembly'] = 'hg19' if hg19 else 'hg38'
+            cna_config['SimParams']['AutosomesOnly'] = False
             cna_config['SimParams']['Sex'] = 'Male' if sex == 'M' else 'Female'
             
             # Save it in the temp directory
@@ -1303,11 +1287,11 @@ def simulate_cna_sv_profile(tumor_list_f:tuple[str, ...], sex_f:list[str], hg19:
                 json.dump(cna_config, f)
 
             # Run the CNA simulation in another environment
-            command:Sequence[str] = ['dotnet', 'run', '--project', '/oncoGAN/models/simcha/SimChA', '--',
+            command:Sequence[str] = ['/oncoGAN/models/simcha/publish/SimChA',
                                     '--root', '/oncoGAN/models/simcha/',
                                     '--config', f'{cna_donor_config_json}',
                                     '--output', f'{tmp_donor_results_dir}',
-                                    '-e', '-s']
+                                    '-d', '-s']
             command_logs = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
             # Load results
@@ -1403,6 +1387,17 @@ def update_vafs_cna(refGenome:str, vcf_f:pd.DataFrame, events:pd.DataFrame, nit_
     vcf_f = vcf_f[af_values != 0]
 
     return (vcf_f, history_df)
+
+def plot_cna(cna_f:str, output_f:str) -> None:
+
+    """
+    Function to plot the CNA profile of each donor
+    """
+
+    command:Sequence[str] = ['Rscript', '/oncoGAN/src/plot_CNA.R',
+                             '--cna', cna_f,
+                             '--output', output_f]
+    plot_result = subprocess.run(command)
 
 @click.group()
 def cli():
@@ -1574,7 +1569,7 @@ def oncoGAN(cpus, tumor, subtumor, nCases, nit, template, refGenome, prefix, out
 
     # Assemble one donor at a time
     for idx, case_tumor in tqdm(enumerate(counts_tumor_tag), desc = "Donors"):
-        output:str = out_path(outDir, tumor=case_tumor, prefix=prefix_list[idx], n=idx+1)
+        output:str = f"{outDir}/{tumor}_{prefix_list[idx]}"
         
         if simulateMuts:
             case_signatures:pd.DataFrame = signatures[idx].reset_index(drop=True)
@@ -1588,9 +1583,9 @@ def oncoGAN(cpus, tumor, subtumor, nCases, nit, template, refGenome, prefix, out
             # Create the VCF output 
             case_vcf:pd.DataFrame = pd2vcf(case_genomic_positions, case_driver_mutations, case_mut_vafs, prefix=prefix_list[idx])
             
-            # Convert from hg19 to hg38 #FIXME - Uncomment once hg19 files have been liftovered (SimChA)
-            # if not hg19:
-            #     case_vcf = hg19tohg38(case_vcf)
+            # Convert from hg19 to hg38
+            if not hg19:
+                case_vcf = hg19tohg38(case_vcf)
 
         if simulateCNA_SV:
             case_cna:pd.DataFrame = cna_profile[idx]
@@ -1617,10 +1612,10 @@ def oncoGAN(cpus, tumor, subtumor, nCases, nit, template, refGenome, prefix, out
                 out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
                 out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
-            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
-            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
-            case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False, mode="a")
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode = "a")
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False)
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False)
+            case_event_history.to_csv(f"{output}_events_order.tsv", sep="\t", index=False)
         elif simulateMuts and not simulateCNA_SV:
             with open(f"{output}.vcf", "w+") as out:
                 out.write("##fileformat=VCFv4.2\n")
@@ -1634,7 +1629,11 @@ def oncoGAN(cpus, tumor, subtumor, nCases, nit, template, refGenome, prefix, out
                 out.write('##INFO=<ID=IDCTX,Number=A,Type=String,Description="Indel context">\n')
                 out.write('##INFO=<ID=HPR,Number=A,Type=String,Description="Homopolymer reference">\n')
                 out.write('##INFO=<ID=MHR,Number=A,Type=String,Description="Microhomology reference">\n')
-            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False, mode="a")
+            case_vcf.to_csv(f"{output}.vcf", sep="\t", index=False)
         elif not simulateMuts and simulateCNA_SV:
-            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False, mode="a")
-            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False, mode="a")
+            case_cna.to_csv(f"{output}_cna.tsv", sep="\t", index=False)
+            case_sv.to_csv(f"{output}_sv.tsv", sep="\t", index=False)
+        
+        # Plot CNA profile
+        if simulateCNA_SV and savePlots:
+            plot_cna(f"{output}_cna.tsv", f"{output}_cna_profile.png")

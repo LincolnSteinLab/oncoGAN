@@ -7,7 +7,7 @@ A pipeline that accurately simulates high quality publicly cancer genomes (VCFs,
 
 ## Big update - v1.0.0 - Main changes
 
-We have upgraded the internal generative models from Generative Adversarial Network (GAN)–based architectures ([CTAB-GAN+](https://github.com/Team-TUD/CTAB-GAN-Plus) and [CTGAN](https://docs.sdv.dev/sdv)) tto a Flow-Matching Diffusion–based approach ([Calo-Forest](https://github.com/layer6ai-labs/calo-forest)).
+We have upgraded the internal generative models from Generative Adversarial Network (GAN)–based architectures ([CTAB-GAN+](https://github.com/Team-TUD/CTAB-GAN-Plus) and [CTGAN](https://docs.sdv.dev/sdv)) to a Flow-Matching Diffusion–based approach ([Calo-Forest](https://github.com/layer6ai-labs/calo-forest)).
 
 This new architecture provides several key improvements:
 - Higher accuracy in simulated mutational profiles
@@ -16,7 +16,9 @@ This new architecture provides several key improvements:
 - Improved genomic distribution of mutations at resolutions up to 1 Mb
 - Enhanced driver mutation profiles
 
-Additionally, `simulation` and `training` Docker images are now merged into a single, lightweight, and user-friendly image.
+Additionally:
+ 1. `simulation` and `training` Docker images are now merged into a single, lightweight, and user-friendly image
+ 2. Copy number alterations and structural variants are now simulated by [SimChA](https://github.com/schwarzlab-ccb/SimChA) and integrated into the OncoGAN workflow automatically
 
 ---
 
@@ -88,9 +90,9 @@ OncoGAN models for the thirty tumor types and DeepTumour models (default and enh
 OncoGAN needs two external inputs to simulate new samples:
 
 1. The directory with OncoGAN models downloaded previously
-2. **hg19 fasta** reference genome without the *chr* prefix 
+2. **hg19 fasta** reference genome
 
-The output consists of one VCF file (mutations), two TSV files (CNAs and SVs), and one PNG file (CNA + SV plot) per donor, all reported in GRCh38 genomic coordinates by default.
+The output consists of one VCF file (mutations), three TSV files (CNAs, SVs and order of events), and one PNG file (CNAs) per donor, all reported in GRCh38 genomic coordinates by default.
 
 ### Tumors with real profiles
 
@@ -132,11 +134,10 @@ vcfGANerator --help
 #                          mutation to simulate for each donor (template
 #                          available on GitHub)
 #  -r, --refGenome PATH    hg19 reference genome in fasta format  [required]
-#  --prefix TEXT           Prefix to name the output. If not, '--tumor' option
-#                          is used as prefix
-#  --outDir DIRECTORY      Directory where save the simulations. Default is 
-#                          the current directory
-#  --hg19                  Transform the mutations to hg19. Default hg38
+#  --prefix TEXT           Prefix to name the output. If not, '--tumor'
+#                          option is used as prefix
+#  --outDir DIRECTORY      Directory where save the simulations [default: .]
+#  --hg19                  Transform the mutations to hg19. [default: hg38]
 #  --mut / --no-mut        Simulate mutations  [default: mut]
 #  --CNA-SV / --no-CNA-SV  Simulate CNA and SV events  [default: CNA-SV]
 #  --plots / --no-plots    Save plots  [default: plots]
@@ -146,7 +147,7 @@ vcfGANerator --help
 
 ### Tumors with custom profiles
 
-To generate tumors with custom profiles, users can use the [template](template_custom_simulation.csv), which contains a list of possible mutation types and signatures to simulate. If no CNA-SV are required, the `cna-sv profile` can be set to `-`.
+To generate tumors with custom profiles, users can use the [template](template_custom_simulation.csv), which contains a list of possible mutation types and signatures to simulate. If no CNA-SV are required, use the `--no-CNA-SV` option in the command line.
 
 ```bash
 # Docker command
@@ -174,7 +175,7 @@ Among all the options offered by docker (`docker run --help`), we recommend:
 - `-i, --interactive`: Keep STDIN open even if not attached.
 - `-t, --tty`: Allocate a pseudo-TTY. When combined with `-i` it allows you to connect your terminal with the container terminal.
 
-For singularity, the `-H` and `-B` options are analogous to `-v` docker option.
+For singularity, the `-H` (for `/home`) and `-B` (for other directories) options are analogous to `-v` docker option.
 
 ### More options 
 
@@ -187,14 +188,16 @@ docker run --rm -it oicr/oncogan:v1.0.0 availTumors
 
 singularity exec /PATH_TO/oncogan_v1.0.0.sif launcher.py availTumors
  
-# This is the list of available tumor types that can be simulated using oncoGAN:
-# 
-# Biliary-AdenoCA Bladder-TCC     Bone-Leiomyo    Bone-Osteosarc  Breast-AdenoCa    Cervix-SCC
-# CNS-GBM         CNS-Medullo     CNS-Oligo       CNS-PiloAstro   ColoRect-AdenoCA  Eso-AdenoCa
-# Head-SCC        Kidney-ChRCC    Kidney-RCC      Liver-HCC       Lung-AdenoCA      Lung-SCC
-# Lymph-BNHL      Lymph-CLL       Myeloid-MPN     Ovary-AdenoCA   Panc-AdenoCA      Panc-Endocrine
-# Prost-AdenoCA   Skin-Melanoma   Stomach-AdenoCA Thy-AdenoCA     Uterus-AdenoCA
+# This is the list of available tumor types that can be simulated using oncoGAN - ('*' Available CNA model):
+
+# Biliary-AdenoCA   Bladder-TCC*      Bone-Leiomyo      Bone-Osteosarc    Breast-AdenoCa*   Cervix-SCC*       
+# CNS-GBM*          CNS-Medullo       CNS-Oligo*        CNS-PiloAstro     ColoRect-AdenoCA* Eso-AdenoCa*      
+# Head-SCC*         Kidney-ChRCC      Kidney-RCC*       Liver-HCC*        Lung-AdenoCA*     Lung-SCC*         
+# Lymph-BNHL        Lymph-CLL         Myeloid-MPN       Ovary-AdenoCA*    Panc-AdenoCA*     Panc-Endocrine    
+# Prost-AdenoCA*    Skin-Melanoma*    Stomach-AdenoCA*  Thy-AdenoCA       Uterus-AdenoCA* 
 ```
+
+>NOTE: A general model is used for tumor types without a specific SimChA model.
 
 ## Train new models
 
@@ -221,9 +224,12 @@ singularity exec -H ${pwd}:/home \
             trainCaloForest --csv /home/caloforest_training_test.csv --config /home/caloforest_config_test.json --prefix caloforest_test
 ```
 
-### DAE command #TODO
+### DAE command
 
-We reccomend training the DAE model interactively inside the Docker container, using as template the [`dae_training.py` script](src/dae_training.py):
+We recommend training the DAE model interactively inside the Docker container, using as template the [`dae_training.py` script](src/dae_training.py):
+
+> [!WARNING] 
+> Modify line 27 of the `dae_training.py` script with your your training data.
 
 ```bash
 docker run --rm -u $(id -u):$(id -g) \
@@ -241,7 +247,7 @@ singularity shell -H ${pwd}:/home \
 # Activate the specific conda environment
 > micromamba activate dae
 
-# Then, run the dae_training.py script with your custom configuration
+# Then, run the dae_training.py script with your custom configuration interactively
 ```
 
 ## DeepTumour

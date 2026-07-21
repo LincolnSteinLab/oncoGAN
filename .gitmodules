@@ -2,3 +2,6 @@
 	path = deeptumour
 	url = https://github.com/LincolnSteinLab/DeepTumour.git
 	branch = main
+[submodule "models/simcha"]
+	path = models/simcha
+	url = git@github.com:schwarzlab-ccb/SimChA.git
