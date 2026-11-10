@@ -109,7 +109,7 @@ docker run --rm -u $(id -u):$(id -g) \
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_HG19_DIR/:/reference \
             -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-            /PATH_TO/oncogan_v1.0.0.sif launcher.py \
+            /PATH_TO/oncogan_v1.0.0.sif /usr/local/bin/_entrypoint.sh python3 /oncoGAN/src/launcher.py \
             vcfGANerator -n 1 --tumor Breast-AdenoCa -r /reference/hs37d5.fa
 ```
 
@@ -162,7 +162,7 @@ docker run --rm -u $(id -u):$(id -g) \
 singularity exec -H ${pwd}:/home \
             -B /PATH_TO_HG19_DIR/:/reference \
             -B /PATH_TO_ONCOGAN_MODELS/:/oncoGAN/trained_models \
-            /PATH_TO/oncogan_v1.0.0.sif launcher.py \
+            /PATH_TO/oncogan_v1.0.0.sif /usr/local/bin/_entrypoint.sh python3 /oncoGAN/src/launcher.py \
             vcfGANerator --template /home/template_custom_simulation.csv -r /reference/hs37d5.fa
 ```
 
@@ -186,7 +186,7 @@ docker run --rm -it oicr/oncogan:v1.0.0 availTumors
 
 # or 
 
-singularity exec /PATH_TO/oncogan_v1.0.0.sif launcher.py availTumors
+singularity exec /PATH_TO/oncogan_v1.0.0.sif /usr/local/bin/_entrypoint.sh python3 /oncoGAN/src/launcher.py availTumors
  
 # This is the list of available tumor types that can be simulated using oncoGAN - ('*' Available CNA model):
 
@@ -220,7 +220,7 @@ docker run --rm -u $(id -u):$(id -g) \
 
 # Singularity command
 singularity exec -H ${pwd}:/home \
-            /PATH_TO/oncogan_v1.0.0.sif launcher.py \
+            /PATH_TO/oncogan_v1.0.0.sif /usr/local/bin/_entrypoint.sh python3 /oncoGAN/src/launcher.py \
             trainCaloForest --csv /home/caloforest_training_test.csv --config /home/caloforest_config_test.json --prefix caloforest_test
 ```
 
